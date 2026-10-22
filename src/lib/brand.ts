@@ -59,7 +59,7 @@ export function lintBrand(text: string, kit: BrandKit = DEFAULT_BRAND_KIT): Bran
       break;
     }
   }
-  const stripped = text.replace(new RegExp(escapeRe(kit.name), "gi"), "");
+  const stripped = text.split(kit.name).join(""); // exact case only — "a cup of compassion" is still off-brand
   if (BARE_NAME.test(stripped)) {
     issues.push({ code: "bare_name", message: `Write “${kit.name}” with the leading “A”.` });
   }
@@ -91,8 +91,4 @@ export function autoFixBrand(text: string, kit: BrandKit = DEFAULT_BRAND_KIT): s
   out = out.replace(/\b(?:(?:a|the)\s+)?cup of compassion\b/gi, kit.name);
   for (const re of PHONE_VARIANTS) out = out.replace(new RegExp(re.source, "gi"), kit.phoneDisplay);
   return out;
-}
-
-function escapeRe(s: string) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

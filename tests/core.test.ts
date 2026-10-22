@@ -89,3 +89,7 @@ test("campaign personalization", () => {
   assert.equal(personalize("Hi {{first_name}}!", { firstName: "", lastName: "", email: null, phone: null }), "Hi friend!");
   assert.equal(personalize("Hi {{ firstName }} {{last_name}}", { firstName: "Ann", lastName: "Lee", email: null, phone: null }), "Hi Ann Lee");
 });
+
+test("lowercase brand name is flagged", () => {
+  assert.ok(lintBrand("welcome to a cup of compassion").some((i) => i.code === "bare_name"));
+});

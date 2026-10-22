@@ -26,11 +26,11 @@ export type ApprovalPayloads = {
   email: { to: string; subject: string; body: string };
   sms: { to: string; body: string };
   dm: { platform: "instagram" | "facebook"; recipientId: string; message: string; commentId?: string };
-  social_post: { socialPostId: string };
+  social_post: { socialPostId: string; caption?: string };
   clip_post: { videoId: string; clipId: string; platforms: ("instagram" | "facebook")[]; caption: string };
   charge: { paymentId: string; channel: "email" | "sms"; to: string; message: string };
-  publish_page: { pageId: string };
-  campaign_send: { campaignId: string };
+  publish_page: { pageId: string; slug?: string };
+  campaign_send: { campaignId: string; subject?: string; body?: string };
   voice_send: { voiceDraftId: string; to: string; channel: "sms" | "call" };
   song_release: { songId: string; platforms?: ("instagram" | "facebook")[]; caption?: string };
   design_publish: { designId: string; platforms: ("instagram" | "facebook")[]; caption: string };
