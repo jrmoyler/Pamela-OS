@@ -7,3 +7,4 @@ out
 storage
 *.tsbuildinfo
 next-env.d.ts
+.next-*
