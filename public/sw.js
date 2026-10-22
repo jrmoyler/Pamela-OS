@@ -26,8 +26,11 @@ self.addEventListener("fetch", (event) => {
         (hit) =>
           hit ||
           fetch(req).then((res) => {
-            const copy = res.clone();
-            caches.open(VERSION).then((c) => c.put(req, copy));
+            // Never pin an error (e.g. a 404 for a chunk from an old deploy) in the cache.
+            if (res.ok) {
+              const copy = res.clone();
+              caches.open(VERSION).then((c) => c.put(req, copy));
+            }
             return res;
           }),
       ),
@@ -37,6 +40,6 @@ self.addEventListener("fetch", (event) => {
 
   // Pages: network-first, fall back to the offline page.
   if (req.mode === "navigate") {
-    event.respondWith(fetch(req).catch(() => caches.match("/offline.html")));
+    event.respondWith(fetch(req).catch(() => caches.match("/offline.html").then((hit) => hit || Response.error())));
   }
 });

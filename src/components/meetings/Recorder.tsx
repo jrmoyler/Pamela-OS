@@ -31,6 +31,7 @@ export function Recorder({ contacts, deals, defaultContactId }: { contacts: Opt[
   const [liveSupported, setLiveSupported] = useState(true);
   const [manual, setManual] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [failedUpload, setFailedUpload] = useState<{ blob: Blob | File | null; segs: Segment[]; duration: number } | null>(null);
 
   const recorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
@@ -42,10 +43,21 @@ export function Recorder({ contacts, deals, defaultContactId }: { contacts: Opt[
   const segStart = useRef(0);
   const currentRef = useRef(current);
   const stateRef = useRef(state);
+  const segmentsRef = useRef<Segment[]>([]);
   currentRef.current = current;
   stateRef.current = state;
 
   useEffect(() => setLiveSupported(!!getSpeechRecognition()), []);
+  // Leaving the page mid-recording must release the mic and stop recognition restarting itself.
+  useEffect(
+    () => () => {
+      stateRef.current = "idle";
+      rec.current?.stop();
+      if (recorder.current && recorder.current.state !== "inactive") recorder.current.stop();
+      stream.current?.getTracks().forEach((t) => t.stop());
+    },
+    [],
+  );
   useEffect(() => {
     if (state !== "recording") return;
     const id = setInterval(() => setElapsed((Date.now() - startedAt.current - pausedTotal.current) / 1000), 500);
@@ -69,7 +81,9 @@ export function Recorder({ contacts, deals, defaultContactId }: { contacts: Opt[
           const text = res[0].transcript.trim();
           if (text) {
             const end = now();
-            setSegments((s) => [...s, { speaker: currentRef.current, start: Math.max(0, segStart.current), end, text }]);
+            const seg = { speaker: currentRef.current, start: Math.max(0, segStart.current), end, text };
+            segmentsRef.current = [...segmentsRef.current, seg];
+            setSegments((s) => [...s, seg]);
             segStart.current = end;
           }
         } else live += res[0].transcript;
@@ -105,6 +119,7 @@ export function Recorder({ contacts, deals, defaultContactId }: { contacts: Opt[
     startedAt.current = Date.now();
     pausedTotal.current = 0;
     segStart.current = 0;
+    segmentsRef.current = [];
     setSegments([]);
     setState("recording");
     stateRef.current = "recording";
@@ -141,6 +156,8 @@ export function Recorder({ contacts, deals, defaultContactId }: { contacts: Opt[
 
   async function stopAndSave() {
     const mr = recorder.current;
+    // Measure now (the ticker only updates every 500 ms and stops counting while paused).
+    const duration = (stateRef.current === "paused" ? pausedAt.current - startedAt.current - pausedTotal.current : Date.now() - startedAt.current - pausedTotal.current) / 1000;
     stateRef.current = "uploading";
     setState("uploading");
     rec.current?.stop();
@@ -153,11 +170,14 @@ export function Recorder({ contacts, deals, defaultContactId }: { contacts: Opt[
       blob = new Blob(chunks.current, { type: mr.mimeType || "audio/webm" });
     }
     stream.current?.getTracks().forEach((t) => t.stop());
-    await upload(blob, segments, elapsed);
+    setElapsed(duration);
+    // Read segments from the ref: final speech results can land after the click.
+    await upload(blob, segmentsRef.current, duration);
   }
 
   async function upload(blob: Blob | File | null, segs: Segment[], duration: number) {
     setState("uploading");
+    setFailedUpload(null);
     const fd = new FormData();
     if (blob) fd.append("audio", blob, blob instanceof File ? blob.name : `meeting-${Date.now()}.${(blob.type.split("/")[1] ?? "webm").split(";")[0]}`);
     const extraText = manual.trim();
@@ -176,6 +196,8 @@ export function Recorder({ contacts, deals, defaultContactId }: { contacts: Opt[
       if (!res.ok) throw new Error(data.error ?? "Upload failed");
       router.push(`/meetings/${data.id}`);
     } catch (e) {
+      // Keep the recording so a failed upload doesn't lose the meeting.
+      setFailedUpload({ blob, segs, duration });
       setError((e as Error).message);
       setState("idle");
     }
@@ -186,9 +208,16 @@ export function Recorder({ contacts, deals, defaultContactId }: { contacts: Opt[
     const duration = await new Promise<number>((res) => {
       const a = document.createElement("audio");
       a.preload = "metadata";
-      a.onloadedmetadata = () => res(Number.isFinite(a.duration) ? a.duration : 0);
-      a.onerror = () => res(0);
-      a.src = URL.createObjectURL(file);
+      const src = URL.createObjectURL(file);
+      a.onloadedmetadata = () => {
+        URL.revokeObjectURL(src);
+        res(Number.isFinite(a.duration) ? a.duration : 0);
+      };
+      a.onerror = () => {
+        URL.revokeObjectURL(src);
+        res(0);
+      };
+      a.src = src;
     });
     await upload(file, [], duration);
   }
@@ -229,7 +258,16 @@ export function Recorder({ contacts, deals, defaultContactId }: { contacts: Opt[
             )}
           </div>
           {!liveSupported && <p className="border-t border-zinc-100 px-5 py-2 text-xs text-amber-700">This browser has no live transcription — audio is still recorded and transcribed on the server if Whisper is connected. You can also type notes below.</p>}
-          {error && <p className="border-t border-zinc-100 px-5 py-2 text-sm text-red-600">{error}</p>}
+          {error && (
+            <p className="flex flex-wrap items-center gap-2 border-t border-zinc-100 px-5 py-2 text-sm text-red-600">
+              {error}
+              {state === "idle" && failedUpload && (
+                <Button size="sm" variant="outline" onClick={() => void upload(failedUpload.blob, failedUpload.segs, failedUpload.duration)}>
+                  <Upload className="h-4 w-4" /> Retry upload
+                </Button>
+              )}
+            </p>
+          )}
           <div className="border-t border-zinc-100 px-5 py-3">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">Who&apos;s speaking? (tap to switch)</p>
             <div className="flex flex-wrap items-center gap-2">
@@ -247,7 +285,7 @@ export function Recorder({ contacts, deals, defaultContactId }: { contacts: Opt[
                 }}
                 className="flex items-center gap-1"
               >
-                <Input value={newSpeaker} onChange={(e) => setNewSpeaker(e.target.value)} placeholder="Add speaker" className="h-8 w-32" />
+                <Input value={newSpeaker} onChange={(e) => setNewSpeaker(e.target.value)} placeholder="Add speaker" aria-label="New speaker name" className="h-8 w-32" />
                 <Button size="icon" variant="ghost" aria-label="Add speaker"><UserPlus className="h-4 w-4" /></Button>
               </form>
             </div>
@@ -298,7 +336,7 @@ export function Recorder({ contacts, deals, defaultContactId }: { contacts: Opt[
         <Card>
           <CardHeader title="Or upload a recording" subtitle="Zoom/phone recordings: audio or video files." />
           <div className="space-y-2 p-4">
-            <input type="file" accept="audio/*,video/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="w-full text-sm" />
+            <input type="file" aria-label="Recording file" accept="audio/*,video/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="w-full text-sm" />
             <Button variant="outline" className="w-full" disabled={!file || state !== "idle"} onClick={uploadFile}>
               <Upload className="h-4 w-4" /> Upload &amp; process
             </Button>

@@ -47,7 +47,7 @@ export default async function SettingsPage() {
                       <div className="flex gap-1">
                         <Input name={d.key} type={d.secret ? "password" : "text"} autoComplete="off" placeholder={status[d.key] ? (status[d.key] === "env" ? "set in environment" : "•••••• saved") : "not set"} />
                         {status[d.key] === "stored" && (
-                          <Button formAction={clearSecret.bind(null, d.key)} variant="ghost" size="sm" title="Clear">×</Button>
+                          <Button formAction={clearSecret.bind(null, d.key)} variant="ghost" size="sm" title="Clear" aria-label={`Clear ${d.label}`}>×</Button>
                         )}
                       </div>
                     </Field>
@@ -84,10 +84,10 @@ export default async function SettingsPage() {
             <form action={saveSchedule} className="space-y-3 p-4">
               {[...s.blackouts, { label: "", start: "", end: "", days: [] as number[] }].map((b, i) => (
                 <div key={i} className="grid grid-cols-[1fr_90px_90px_110px] gap-2">
-                  <Input name="label" defaultValue={b.label} placeholder="Label" />
-                  <Input name="start" type="time" defaultValue={b.start} />
-                  <Input name="end" type="time" defaultValue={b.end} />
-                  <Input name="days" defaultValue={b.days.join(",")} placeholder="1,2,3,4,5" title={b.days.map((d) => DAY_NAMES[d]).join(" ")} />
+                  <Input name="label" defaultValue={b.label} placeholder="Label" aria-label="Label" />
+                  <Input name="start" type="time" defaultValue={b.start} aria-label="Start time" />
+                  <Input name="end" type="time" defaultValue={b.end} aria-label="End time" />
+                  <Input name="days" defaultValue={b.days.join(",")} placeholder="1,2,3,4,5" aria-label="Days (1 = Monday … 7 = Sunday)" title={b.days.map((d) => DAY_NAMES[d]).join(" ")} />
                 </div>
               ))}
               <p className="text-xs text-zinc-500">Days: 1 = Monday … 7 = Sunday. Clear a row to remove it.</p>
@@ -98,7 +98,7 @@ export default async function SettingsPage() {
           <Card>
             <CardHeader title="Custom dictionary" subtitle="Voice input fixes these everywhere. One per line: heard => written" />
             <form action={saveDictionary} className="space-y-3 p-4">
-              <Textarea name="dictionary" defaultValue={s.dictionary.map((d) => `${d.from} => ${d.to}`).join("\n")} className="min-h-28 font-mono text-xs" />
+              <Textarea name="dictionary" aria-label="Custom dictionary" defaultValue={s.dictionary.map((d) => `${d.from} => ${d.to}`).join("\n")} className="min-h-28 font-mono text-xs" />
               <Button>Save dictionary</Button>
             </form>
           </Card>
@@ -137,8 +137,8 @@ export default async function SettingsPage() {
           <Card>
             <CardHeader title="Password" />
             <form action={changePassword} className="space-y-2 p-4">
-              <Input name="current" type="password" placeholder="Current password" required />
-              <Input name="next" type="password" placeholder="New password (10+ characters)" minLength={10} required />
+              <Input name="current" type="password" autoComplete="current-password" placeholder="Current password" aria-label="Current password" required />
+              <Input name="next" type="password" autoComplete="new-password" placeholder="New password (10+ characters)" aria-label="New password" minLength={10} required />
               <Button variant="outline">Change password</Button>
             </form>
           </Card>

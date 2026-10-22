@@ -52,6 +52,7 @@ export function Composer({ action, suggestions }: { action: (form: FormData) => 
         <textarea
           ref={input}
           name="text"
+          aria-label="Message to RJ"
           rows={2}
           placeholder="Ask RJ anything — or tap the mic and talk."
           className="min-h-11 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm focus:outline-none focus-visible:outline-none"

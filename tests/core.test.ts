@@ -1,10 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { lintBrand, autoFixBrand } from "../src/lib/brand";
-import { availableSlots, isInBlackout, zonedParts, zonedToUtc, overlapsBlackout } from "../src/lib/time";
+import { availableSlots, isInBlackout, zonedParts, zonedToUtc, overlapsBlackout, dayBounds, weekBounds } from "../src/lib/time";
 import { applyDictionary } from "../src/lib/dictation";
 import { evalConditions, render } from "../src/lib/automations";
 import { personalize } from "../src/lib/approvals";
+import { signedMediaUrl, verifyMediaSig } from "../src/lib/outbound";
+import { hashPassword, verifyPassword } from "../src/lib/crypto";
+import { rangeResponse } from "../src/lib/http";
 
 const TZ = "America/Los_Angeles";
 const BLACKOUT = [{ days: [1, 2, 3, 4, 5], start: "15:00", end: "17:30", label: "family" }];
@@ -88,6 +91,59 @@ test("automation conditions and templating", () => {
 test("campaign personalization", () => {
   assert.equal(personalize("Hi {{first_name}}!", { firstName: "", lastName: "", email: null, phone: null }), "Hi friend!");
   assert.equal(personalize("Hi {{ firstName }} {{last_name}}", { firstName: "Ann", lastName: "Lee", email: null, phone: null }), "Hi Ann Lee");
+});
+
+test("overlapsBlackout catches short intervals straddling a window edge", () => {
+  // 14:58–15:02 Wed: 5-minute sampling used to probe only 14:58 and miss 15:00.
+  assert.ok(overlapsBlackout(zonedToUtc(2026, 10, 21, 14, 58, TZ), zonedToUtc(2026, 10, 21, 15, 2, TZ), BLACKOUT, TZ));
+  // Touching the edges is not an overlap ([start, end) semantics).
+  assert.ok(!overlapsBlackout(zonedToUtc(2026, 10, 21, 14, 30, TZ), zonedToUtc(2026, 10, 21, 15, 0, TZ), BLACKOUT, TZ));
+  assert.ok(!overlapsBlackout(zonedToUtc(2026, 10, 21, 17, 30, TZ), zonedToUtc(2026, 10, 21, 18, 0, TZ), BLACKOUT, TZ));
+  // Weekend and multi-day spans.
+  assert.ok(!overlapsBlackout(zonedToUtc(2026, 10, 24, 14, 0, TZ), zonedToUtc(2026, 10, 24, 18, 0, TZ), BLACKOUT, TZ));
+  assert.ok(overlapsBlackout(zonedToUtc(2026, 10, 24, 9, 0, TZ), zonedToUtc(2026, 10, 26, 15, 1, TZ), BLACKOUT, TZ));
+});
+
+test("day and week bounds end at local midnight across DST", () => {
+  // Sunday Nov 1 2026 is the fall-back day in Los Angeles (25 hours long).
+  const d = dayBounds(zonedToUtc(2026, 11, 1, 12, 0, TZ), TZ);
+  assert.equal(d.end.getTime() - d.start.getTime(), 25 * 3_600_000);
+  assert.deepEqual([zonedParts(d.end, TZ).day, zonedParts(d.end, TZ).hour], [2, 0]);
+  const w = weekBounds(zonedToUtc(2026, 10, 28, 12, 0, TZ), TZ); // week of Mon Oct 26
+  assert.deepEqual([zonedParts(w.start, TZ).day, zonedParts(w.end, TZ).month, zonedParts(w.end, TZ).day, zonedParts(w.end, TZ).hour], [26, 11, 2, 0]);
+});
+
+test("personalize and dictionary insert '$' literally", () => {
+  assert.equal(personalize("Hi {{first_name}}", { firstName: "$&$1", lastName: "", email: null, phone: null }), "Hi $&$1");
+  assert.equal(applyDictionary("price is ten bucks", [{ from: "ten bucks", to: "$10" }]), "price is $10");
+});
+
+test("media signatures reject bad expiry and wrong sigs", () => {
+  const url = new URL(signedMediaUrl("file-1"));
+  const exp = url.searchParams.get("exp")!;
+  const sig = url.searchParams.get("sig")!;
+  assert.ok(verifyMediaSig("file-1", exp, sig));
+  assert.ok(!verifyMediaSig("file-2", exp, sig));
+  assert.ok(!verifyMediaSig("file-1", exp, sig.slice(0, -1)));
+  assert.ok(!verifyMediaSig("file-1", "abc", sig));
+  assert.ok(!verifyMediaSig("file-1", "1", sig));
+});
+
+test("password verification rejects malformed stored hashes", () => {
+  assert.ok(verifyPassword("pw", hashPassword("pw")));
+  assert.ok(!verifyPassword("other", hashPassword("pw")));
+  assert.ok(!verifyPassword("anything", "scrypt$aa$zz"));
+});
+
+test("range responses honour suffix ranges and reject unsatisfiable ones", async () => {
+  const data = Buffer.from("0123456789");
+  const req = (range: string) => new Request("http://x/f", { headers: { range } });
+  const tail = rangeResponse(req("bytes=-3"), data, "text/plain", "f.txt");
+  assert.equal(tail.status, 206);
+  assert.equal(await tail.text(), "789");
+  assert.equal(tail.headers.get("content-range"), "bytes 7-9/10");
+  assert.equal(rangeResponse(req("bytes=20-"), data, "text/plain", "f.txt").status, 416);
+  assert.equal(await rangeResponse(req("bytes=2-4"), data, "text/plain", "f.txt").text(), "234");
 });
 
 test("lowercase brand name is flagged", () => {

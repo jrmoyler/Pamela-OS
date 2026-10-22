@@ -38,7 +38,8 @@ function parseDue(v: unknown): Date | null {
   if (s === "tomorrow") return new Date(now.getTime() + 86_400_000);
   const inDays = s.match(/^in (\d+) days?$/);
   if (inDays) return new Date(now.getTime() + Number(inDays[1]) * 86_400_000);
-  const d = new Date(s);
+  // A bare YYYY-MM-DD parses as UTC midnight, which is the previous evening in US time zones; anchor it to midday.
+  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s}T12:00:00` : s);
   return isNaN(d.getTime()) ? null : d;
 }
 

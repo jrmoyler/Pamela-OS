@@ -11,6 +11,8 @@ import { saveSong, writeLyrics, generateSong, uploadAudio, setStatus, saveCheckl
 
 export default async function SongPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // Ids are uuids; anything else would make Postgres throw (500) instead of a 404.
+  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const db = await getDb();
   const [s] = await db.select().from(schema.songs).where(eq(schema.songs.id, id));
   if (!s) notFound();

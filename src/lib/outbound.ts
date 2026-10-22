@@ -1,5 +1,6 @@
 import { getSecret, getSetting } from "./settings";
-import { hmacHex } from "./crypto";
+import { hmacHex, safeEqual } from "./crypto";
+import { authSecret } from "./session";
 
 /**
  * Low-level delivery adapters. NOTHING outside `approvals.ts` may import these:
@@ -27,13 +28,14 @@ export function appUrl() {
 /** Signed, expiring public URL for a stored file (needed for MMS / Instagram media fetches). */
 export function signedMediaUrl(fileId: string, ttlSec = 7 * 86400) {
   const exp = Math.floor(Date.now() / 1000) + ttlSec;
-  const sig = hmacHex(process.env.AUTH_SECRET || "pamela-os-dev-only-secret-change-me", `${fileId}.${exp}`);
+  const sig = hmacHex(authSecret(), `${fileId}.${exp}`);
   return `${appUrl()}/api/public/media/${fileId}?exp=${exp}&sig=${sig}`;
 }
 
 export function verifyMediaSig(fileId: string, exp: string, sig: string) {
-  if (Number(exp) < Date.now() / 1000) return false;
-  return hmacHex(process.env.AUTH_SECRET || "pamela-os-dev-only-secret-change-me", `${fileId}.${exp}`) === sig;
+  // Reject non-numeric expiries outright (NaN < now is false, so it never "expired").
+  if (!/^\d+$/.test(exp) || Number(exp) < Date.now() / 1000) return false;
+  return safeEqual(hmacHex(authSecret(), `${fileId}.${exp}`), sig);
 }
 
 /* ───────────── Email (Resend) ───────────── */

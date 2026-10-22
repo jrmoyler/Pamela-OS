@@ -9,6 +9,7 @@ import { hashPassword, verifyPassword } from "@/lib/crypto";
 import type { ProviderId } from "@/lib/ai";
 
 export async function saveSecrets(form: FormData) {
+  await requireSession();
   for (const d of SECRET_DEFS) {
     const v = form.get(d.key);
     if (v == null) continue;
@@ -20,16 +21,19 @@ export async function saveSecrets(form: FormData) {
 }
 
 export async function clearSecret(key: string) {
+  await requireSession();
   await setSecret(key as SecretKey, null);
   revalidatePath("/settings");
 }
 
 export async function setDeliveryMode(mode: "sandbox" | "live") {
+  await requireSession();
   await setSetting("deliveryMode", mode);
   revalidatePath("/", "layout");
 }
 
 export async function saveBrand(form: FormData) {
+  await requireSession();
   const kit = await getSetting("brandKit");
   await setSetting("brandKit", {
     ...kit, // name, color and phone stay locked
@@ -46,6 +50,7 @@ export async function saveBrand(form: FormData) {
 }
 
 export async function saveSchedule(form: FormData) {
+  await requireSession();
   const rows: BlackoutWindow[] = [];
   const labels = form.getAll("label").map(String);
   labels.forEach((label, i) => {
@@ -58,12 +63,21 @@ export async function saveSchedule(form: FormData) {
     if (start && end && days.length) rows.push({ label: label || "Protected time", start, end, days });
   });
   await setSetting("blackouts", rows);
-  const tz = String(form.get("timezone") || "");
-  if (tz) await setSetting("timezone", tz);
+  const tz = String(form.get("timezone") || "").trim();
+  if (tz) {
+    // An unknown zone makes every Intl date format throw, which would take down every page.
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    } catch {
+      throw new Error(`“${tz}” isn't a time zone. Use a name like America/Los_Angeles.`);
+    }
+    await setSetting("timezone", tz);
+  }
   revalidatePath("/settings");
 }
 
 export async function saveDictionary(form: FormData) {
+  await requireSession();
   const entries = String(form.get("dictionary") ?? "")
     .split("\n")
     .map((l) => l.split("=>").map((s) => s.trim()))
@@ -74,6 +88,7 @@ export async function saveDictionary(form: FormData) {
 }
 
 export async function saveRouting(form: FormData) {
+  await requireSession();
   const parse = (k: string) =>
     String(form.get(k) ?? "")
       .split(",")

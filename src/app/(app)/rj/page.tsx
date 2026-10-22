@@ -56,7 +56,7 @@ export default async function RjPage({ searchParams }: { searchParams: Promise<{
           </div>
           {active && (
             <form action={deleteThread.bind(null, active.id)}>
-              <Button variant="ghost" size="sm"><Trash2 className="h-4 w-4" /></Button>
+              <Button variant="ghost" size="sm" aria-label="Delete conversation"><Trash2 className="h-4 w-4" /></Button>
             </form>
           )}
         </div>

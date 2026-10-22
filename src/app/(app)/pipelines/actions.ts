@@ -6,8 +6,10 @@ import { asc, eq, max } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { emit } from "@/lib/events";
 import { logActivity, findOrCreateContact } from "@/lib/crm";
+import { requireSession } from "@/lib/auth";
 
 export async function moveDeal(dealId: string, stageId: string, position: number) {
+  await requireSession();
   const db = await getDb();
   const [stage] = await db.select().from(schema.pipelineStages).where(eq(schema.pipelineStages.id, stageId));
   if (!stage) return;
@@ -25,8 +27,10 @@ export async function moveDeal(dealId: string, stageId: string, position: number
 }
 
 export async function createDeal(pipelineId: string, form: FormData) {
+  await requireSession();
   const db = await getDb();
-  const stageId = String(form.get("stageId"));
+  const stageId = String(form.get("stageId") || "");
+  if (!stageId) return; // pipeline has no stages yet
   const name = String(form.get("contact") ?? "").trim();
   const email = String(form.get("email") ?? "").trim();
   let contactId: string | null = String(form.get("contactId") || "") || null;
@@ -53,6 +57,7 @@ export async function createDeal(pipelineId: string, form: FormData) {
 }
 
 export async function createPipeline(form: FormData) {
+  await requireSession();
   const db = await getDb();
   const name = String(form.get("name") ?? "").trim();
   if (!name) return;
@@ -66,6 +71,7 @@ export async function createPipeline(form: FormData) {
 }
 
 export async function addStage(pipelineId: string, form: FormData) {
+  await requireSession();
   const db = await getDb();
   const name = String(form.get("name") ?? "").trim();
   if (!name) return;

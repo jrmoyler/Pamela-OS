@@ -3,17 +3,22 @@ import { asc, eq } from "drizzle-orm";
 import { Clock } from "lucide-react";
 import { getDb, schema } from "@/lib/db";
 import { money } from "@/lib/utils";
+import { getSetting } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Book a time with Pamela" };
 
+/** e.g. "Pacific Time" — the booking time zone is a setting, so never hard-code it. */
+const tzLabel = (tz: string) => new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "longGeneric" }).formatToParts(new Date()).find((p) => p.type === "timeZoneName")?.value ?? tz;
+
 export default async function BookIndex() {
   const db = await getDb();
   const types = await db.select().from(schema.bookingTypes).where(eq(schema.bookingTypes.active, true)).orderBy(asc(schema.bookingTypes.durationMin));
+  const tz = await getSetting("timezone");
   return (
     <>
       <h1 className="font-serif text-3xl font-bold text-brand">Book a time with Pamela</h1>
-      <p className="mt-2 text-zinc-600">Choose the conversation that fits. All times are Pacific.</p>
+      <p className="mt-2 text-zinc-600">Choose the conversation that fits. All times are {tzLabel(tz)}.</p>
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
         {types.map((t) => (
           <Link key={t.id} href={`/book/${t.slug}`} className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm transition hover:border-brand">

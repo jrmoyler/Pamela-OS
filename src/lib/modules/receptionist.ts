@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import type { CallTurn } from "../db/schema";
 import { getSetting } from "../settings";
-import { isInBlackout, formatSlot, formatInTz, zonedParts } from "../time";
+import { isInBlackout, formatSlot, formatInTz, zonedParts, tzLabel } from "../time";
 import { findOrCreateContact, logActivity, contactName, splitName } from "../crm";
 import { emit } from "../events";
 import { aiJson, aiText } from "../ai";
@@ -170,7 +170,7 @@ async function offerSlots(state: CallState, tz: string, after?: Date): Promise<{
   const list = slots.map((s) => formatSlot(s, tz));
   const spoken = list.length === 1 ? list[0] : `${list.slice(0, -1).join(", ")}, or ${list.at(-1)}`;
   return {
-    reply: `I can book you a ${r.type.name} with Pamela. I have ${spoken}, Pacific time. Which works best?`,
+    reply: `I can book you a ${r.type.name} with Pamela. I have ${spoken}, ${tzLabel(tz)}. Which works best?`,
     state: { ...state, stage: "booking_offer", intent: "booking", offered: slots.map((s) => s.toISOString()), offeredType: r.type.slug, offerRound: (state.offerRound ?? 0) + 1 },
   };
 }
@@ -240,7 +240,7 @@ export async function handleTurn(callId: string, utteranceRaw: string, stateIn: 
         state.reason = c?.reason || utterance;
         state.intent = c?.intent ?? "message";
       } else if (!state.callerName && utterance.split(/\s+/).length <= 4) {
-        state.callerName = utterance.replace(/[.!?]/g, "").split(/\s+/).map((w) => w[0]?.toUpperCase() + w.slice(1)).join(" ");
+        state.callerName = utterance.replace(/[.!?]/g, "").split(/\s+/).filter(Boolean).map((w) => w[0]?.toUpperCase() + w.slice(1)).join(" ");
       }
       if (state.callerName) await saveCallerName(call, state.callerName);
       if (!state.callerName && state.stage === "screen") {
@@ -289,7 +289,7 @@ export async function handleTurn(callId: string, utteranceRaw: string, stateIn: 
           notes: state.reason ?? null,
         });
         state = { ...state, stage: "wrapup", bookingId: r.booking.id };
-        return respond(`You're all set for ${r.startsAtLocal}, Pacific time. Pamela will call you at this number. Is there anything else I can help with?`, { type: "continue" }, { disposition: "booked", bookingId: r.booking.id });
+        return respond(`You're all set for ${r.startsAtLocal}, ${tzLabel(tz)}. Pamela will call you at this number. Is there anything else I can help with?`, { type: "continue" }, { disposition: "booked", bookingId: r.booking.id });
       } catch (e) {
         const msg = e instanceof BookingError ? "That time was just taken." : "I had trouble booking that.";
         const o = await offerSlots(state, tz);
@@ -308,6 +308,10 @@ export async function handleTurn(callId: string, utteranceRaw: string, stateIn: 
       return respond("Got it. I'll pass that along to Pamela right away. Is there anything else?", { type: "continue" }, { disposition: call.disposition ?? "message" });
     }
     case "wrapup": {
+      // "Anything else?" → a bare "yes" means they have more to say, not goodbye.
+      if (/^(yes|yeah|yep|yup|sure|actually|wait|one more)\b/i.test(utterance) && utterance.split(/\s+/).length <= 3) {
+        return respond("Of course. What else would you like me to pass along?", { type: "continue" });
+      }
       if (DONE.test(utterance) || utterance.split(/\s+/).length <= 2) {
         state.stage = "done";
         return respond("Thank you for calling A Cup of Compassion. Have a blessed day. Goodbye.", { type: "hangup" });
@@ -382,7 +386,8 @@ export const encodeState = (s: CallState & { callId: string }) => Buffer.from(JS
 export function decodeState(s: string | null): (CallState & { callId: string }) | null {
   if (!s) return null;
   try {
-    return JSON.parse(Buffer.from(s, "base64url").toString("utf8"));
+    const v = JSON.parse(Buffer.from(s, "base64url").toString("utf8"));
+    return v && typeof v.callId === "string" && /^[0-9a-f-]{36}$/i.test(v.callId) ? v : null;
   } catch {
     return null;
   }

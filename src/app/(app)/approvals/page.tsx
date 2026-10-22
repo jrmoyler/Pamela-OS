@@ -118,16 +118,17 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
                     <form action={approveItem.bind(null, a.id)} className="space-y-2">
                       {fields.map((f) =>
                         f === "body" || f === "message" || f === "caption" ? (
-                          <Textarea key={f} name={f} defaultValue={String(p[f] ?? "")} className={f === "body" && a.kind === "email" ? "min-h-48 font-serif" : "min-h-24"} />
+                          <Textarea key={f} name={f} aria-label={f} defaultValue={String(p[f] ?? "")} className={f === "body" && a.kind === "email" ? "min-h-48 font-serif" : "min-h-24"} />
                         ) : (
                           <Input key={f} name={f} defaultValue={String(p[f] ?? "")} aria-label={f} />
                         ),
                       )}
                       {!fields.length && <pre className="max-h-48 overflow-auto rounded-lg bg-zinc-50 p-3 text-xs">{JSON.stringify(a.payload, null, 2)}</pre>}
                       <div className="flex flex-wrap gap-2 pt-1">
-                        <Button><CheckCircle2 className="h-4 w-4" /> Approve & send</Button>
-                        <Button formAction={saveItem.bind(null, a.id)} variant="outline">Save edits</Button>
-                        <Button formAction={rejectItem.bind(null, a.id)} variant="ghost" className="text-red-600"><X className="h-4 w-4" /> Reject</Button>
+                        {/* "Save edits" comes first in the DOM so pressing Enter in a field saves instead of sending; `order` keeps the visual order. */}
+                        <Button formAction={saveItem.bind(null, a.id)} variant="outline" className="order-2">Save edits</Button>
+                        <Button className="order-1"><CheckCircle2 className="h-4 w-4" /> Approve & send</Button>
+                        <Button formAction={rejectItem.bind(null, a.id)} variant="ghost" className="order-3 text-red-600"><X className="h-4 w-4" /> Reject</Button>
                       </div>
                     </form>
                   ) : (

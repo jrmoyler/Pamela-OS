@@ -34,6 +34,8 @@ function DelayInput({ minutes }: { minutes: number }) {
 
 export default async function SequencePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // Ids are uuids; anything else would make Postgres throw (500) instead of a 404.
+  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const db = await getDb();
   const [seq] = await db.select().from(schema.sequences).where(eq(schema.sequences.id, id));
   if (!seq) notFound();

@@ -73,7 +73,8 @@ export async function generateSongJob(payload: Record<string, unknown>): Promise
       await db.update(schema.songs).set({ providerId: clip.id ?? null }).where(eq(schema.songs.id, songId));
     }
     // Poll until the audio is complete (up to ~6 minutes inside one job run).
-    let audioUrl = clip.status === "complete" ? audioOf(clip) : "";
+    // A clip with audio but no id can't be polled; take its audio as-is.
+    let audioUrl = clip.status === "complete" || !clip.id ? audioOf(clip) : "";
     for (let i = 0; !audioUrl && i < 72; i++) {
       await new Promise((r) => setTimeout(r, 5000));
       let latest: SunoClip | undefined;

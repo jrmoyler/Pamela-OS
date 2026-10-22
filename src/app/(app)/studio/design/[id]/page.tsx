@@ -14,6 +14,8 @@ import { saveDesign, uploadPhoto, publishDesign, suggestCaption, canvaGenerate, 
 
 export default async function DesignPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // Ids are uuids; anything else would make Postgres throw (500) instead of a 404.
+  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const db = await getDb();
   const [d] = await db.select().from(schema.designs).where(eq(schema.designs.id, id));
   if (!d) notFound();

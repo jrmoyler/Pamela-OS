@@ -10,8 +10,10 @@ import { aiText } from "@/lib/ai";
 import { herVoiceSystem } from "@/lib/rj/voice";
 import { generateInCanva } from "@/lib/modules/design";
 import { TEMPLATES } from "@/components/studio/designTemplates";
+import { requireSession } from "@/lib/auth";
 
 export async function createDesign(form: FormData) {
+  await requireSession();
   const t = TEMPLATES.find((x) => x.key === form.get("templateKey")) ?? TEMPLATES[0];
   const db = await getDb();
   const [d] = await db
@@ -29,6 +31,7 @@ async function getDesign(id: string) {
 }
 
 export async function saveDesign(id: string, form: FormData) {
+  await requireSession();
   const d = await getDesign(id);
   const t = TEMPLATES.find((x) => x.key === d.templateKey) ?? TEMPLATES[0];
   const fields: Record<string, string> = { ...d.fields };
@@ -43,6 +46,7 @@ export async function saveDesign(id: string, form: FormData) {
 }
 
 export async function uploadPhoto(id: string, form: FormData) {
+  await requireSession();
   const file = form.get("photo");
   if (!(file instanceof File) || !file.size || !file.type.startsWith("image/")) return;
   const stored = await putFile(Buffer.from(await file.arrayBuffer()), file.name, file.type);
@@ -53,11 +57,13 @@ export async function uploadPhoto(id: string, form: FormData) {
 }
 
 export async function canvaGenerate(id: string) {
+  await requireSession();
   await generateInCanva(id);
   revalidatePath(`/studio/design/${id}`);
 }
 
 export async function suggestCaption(id: string) {
+  await requireSession();
   const d = await getDesign(id);
   const r = await aiText(
     "drafting",
@@ -72,6 +78,7 @@ export async function suggestCaption(id: string) {
 }
 
 export async function publishDesign(id: string, form: FormData) {
+  await requireSession();
   const d = await getDesign(id);
   if (!d.exportFileId) throw new Error("Export the design first.");
   const platforms = form.getAll("platforms").map(String).filter((p): p is "instagram" | "facebook" => p === "instagram" || p === "facebook");
@@ -90,6 +97,7 @@ export async function publishDesign(id: string, form: FormData) {
 }
 
 export async function deleteDesign(id: string) {
+  await requireSession();
   const db = await getDb();
   await db.delete(schema.designs).where(eq(schema.designs.id, id));
   redirect("/studio/design");

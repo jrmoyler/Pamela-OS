@@ -57,10 +57,32 @@ export function isInBlackout(date: Date, blackouts: BlackoutWindow[], tz: string
   return null;
 }
 
-/** True when [start, end) intersects any blackout window. Checked at 5-minute resolution. */
+/**
+ * True when [start, end) intersects any blackout window. Computed exactly per
+ * local day (sampling could step over a window edge, e.g. 14:58–15:02).
+ */
 export function overlapsBlackout(start: Date, end: Date, blackouts: BlackoutWindow[], tz: string): boolean {
-  for (let t = start.getTime(); t < end.getTime(); t += 5 * 60_000) {
-    if (isInBlackout(new Date(t), blackouts, tz)) return true;
+  const s = start.getTime();
+  const e = end.getTime();
+  if (e <= s || !blackouts.length) return false;
+  const first = zonedParts(start, tz);
+  // Start one local day early so a window that began the previous day is covered.
+  for (let d = -1; ; d++) {
+    const dayUtc = new Date(Date.UTC(first.year, first.month - 1, first.day + d, 12));
+    const y = dayUtc.getUTCFullYear();
+    const m = dayUtc.getUTCMonth() + 1;
+    const day = dayUtc.getUTCDate();
+    if (zonedToUtc(y, m, day, 0, 0, tz).getTime() >= e) break;
+    const weekday = zonedParts(zonedToUtc(y, m, day, 12, 0, tz), tz).weekday;
+    for (const b of blackouts) {
+      if (!b.days.includes(weekday)) continue;
+      const bs = toMin(b.start);
+      const be = toMin(b.end);
+      if (be <= bs) continue;
+      const ws = zonedToUtc(y, m, day, Math.floor(bs / 60), bs % 60, tz).getTime();
+      const we = zonedToUtc(y, m, day, Math.floor(be / 60), be % 60, tz).getTime();
+      if (s < we && ws < e) return true;
+    }
   }
   return false;
 }
@@ -111,6 +133,11 @@ export function formatInTz(date: Date, tz: string, opts: Intl.DateTimeFormatOpti
   return new Intl.DateTimeFormat("en-US", { timeZone: tz, ...opts }).format(date);
 }
 
+/** Spoken/printed zone name, e.g. "Pacific Time". The zone is a setting, so never hard-code it. */
+export function tzLabel(tz: string) {
+  return new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "longGeneric" }).formatToParts(new Date()).find((p) => p.type === "timeZoneName")?.value ?? tz;
+}
+
 export function formatSlot(date: Date, tz: string) {
   return formatInTz(date, tz, { weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
@@ -127,14 +154,16 @@ export const DEFAULT_HOURS: WeeklyHours = {
 export function weekBounds(now: Date, tz: string) {
   const p = zonedParts(now, tz);
   const start = zonedToUtc(p.year, p.month, p.day - (p.weekday - 1), 0, 0, tz);
-  const end = new Date(start.getTime() + 7 * 86_400_000);
+  // Local midnight, not +168h: DST weeks are 167 or 169 hours long.
+  const end = zonedToUtc(p.year, p.month, p.day - (p.weekday - 1) + 7, 0, 0, tz);
   return { start, end };
 }
 
 export function dayBounds(now: Date, tz: string) {
   const p = zonedParts(now, tz);
   const start = zonedToUtc(p.year, p.month, p.day, 0, 0, tz);
-  return { start, end: new Date(start.getTime() + 86_400_000) };
+  // Local midnight, not +24h: DST days are 23 or 25 hours long.
+  return { start, end: zonedToUtc(p.year, p.month, p.day + 1, 0, 0, tz) };
 }
 
 export function localDateKey(now: Date, tz: string) {

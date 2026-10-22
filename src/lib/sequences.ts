@@ -49,6 +49,15 @@ export async function processDueEnrollments(now = new Date()) {
       await db.update(schema.enrollments).set({ status: "completed", nextRunAt: null }).where(eq(schema.enrollments.id, en.id));
       continue;
     }
+    // Claim this step by advancing the enrollment first (conditional on the step we
+    // read), so concurrent scheduler runs can't draft the same step twice.
+    const next = steps[en.nextStep + 1];
+    const [claimed] = await db
+      .update(schema.enrollments)
+      .set(next ? { nextStep: en.nextStep + 1, nextRunAt: new Date(now.getTime() + next.delayMinutes * 60_000) } : { nextStep: en.nextStep + 1, status: "completed", nextRunAt: null })
+      .where(and(eq(schema.enrollments.id, en.id), eq(schema.enrollments.status, "active"), eq(schema.enrollments.nextStep, en.nextStep)))
+      .returning({ id: schema.enrollments.id });
+    if (!claimed) continue;
     const body = personalize(step.body, contact);
     if (step.channel === "sms" && contact.phone) {
       await createApproval({ kind: "sms", title: `${seq.name} · step ${en.nextStep + 1} → ${contactName(contact)}`, payload: { to: contact.phone, body }, contactId: contact.id, createdBy: "sequence", subjectType: "sequence", subjectId: seq.id });
@@ -65,11 +74,6 @@ export async function processDueEnrollments(now = new Date()) {
       });
       drafted++;
     }
-    const next = steps[en.nextStep + 1];
-    await db
-      .update(schema.enrollments)
-      .set(next ? { nextStep: en.nextStep + 1, nextRunAt: new Date(now.getTime() + next.delayMinutes * 60_000) } : { nextStep: en.nextStep + 1, status: "completed", nextRunAt: null })
-      .where(eq(schema.enrollments.id, en.id));
   }
   return drafted;
 }

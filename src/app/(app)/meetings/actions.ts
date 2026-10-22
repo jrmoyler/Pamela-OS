@@ -10,10 +10,12 @@ import { processMeetingNow } from "@/lib/modules/meetings-run";
 import { draftInHerVoice } from "@/lib/rj/voice";
 import { createApproval } from "@/lib/approvals";
 import { contactName } from "@/lib/crm";
+import { requireSession } from "@/lib/auth";
 
 const path = (id: string) => `/meetings/${id}`;
 
 export async function saveSummary(id: string, form: FormData) {
+  await requireSession();
   const db = await getDb();
   await db
     .update(schema.meetings)
@@ -28,6 +30,7 @@ export async function saveSummary(id: string, form: FormData) {
 }
 
 export async function saveActionItems(id: string, form: FormData) {
+  await requireSession();
   const db = await getDb();
   const [m] = await db.select().from(schema.meetings).where(eq(schema.meetings.id, id));
   if (!m) return;
@@ -45,11 +48,13 @@ export async function saveActionItems(id: string, form: FormData) {
 }
 
 export async function createTasks(id: string) {
+  await requireSession();
   await createTasksForMeeting(id);
   revalidatePath(path(id));
 }
 
 export async function renameSpeaker(id: string, form: FormData) {
+  await requireSession();
   const from = String(form.get("from") || "");
   const to = String(form.get("to") || "").trim();
   if (!from || !to) return;
@@ -68,11 +73,13 @@ export async function renameSpeaker(id: string, form: FormData) {
 }
 
 export async function reprocess(id: string) {
+  await requireSession();
   await processMeetingNow(id, { reprocess: true });
   revalidatePath(path(id));
 }
 
 export async function draftFollowUp(id: string, form: FormData) {
+  await requireSession();
   const db = await getDb();
   const [m] = await db.select().from(schema.meetings).where(eq(schema.meetings.id, id));
   if (!m?.contactId) redirect(`${path(id)}?error=${encodeURIComponent("Link this meeting to a contact first.")}`);
@@ -99,6 +106,7 @@ export async function draftFollowUp(id: string, form: FormData) {
 }
 
 export async function deleteMeeting(id: string) {
+  await requireSession();
   const db = await getDb();
   await db.delete(schema.meetings).where(eq(schema.meetings.id, id));
   redirect("/meetings");

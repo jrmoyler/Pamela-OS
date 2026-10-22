@@ -281,8 +281,9 @@ export async function renderClipJob(payload: Record<string, unknown>): Promise<R
         "scale=1080:1920:force_original_aspect_ratio=increase",
         "crop=1080:1920",
         "drawbox=x=0:y=150:w=iw:h=330:color=0x6a1b9a@0.92:t=fill",
-        `drawtext=${fontArg}:textfile='${hookFile}':fontcolor=white:fontsize=64:line_spacing=12:x=(w-text_w)/2:y=150+(330-text_h)/2`,
-        `drawtext=${fontArg}:textfile='${capFile}':fontcolor=white:fontsize=48:line_spacing=10:box=1:boxcolor=0x6a1b9a@0.85:boxborderw=24:x=(w-text_w)/2:y=h-text_h-260`,
+        // expansion=none: a literal "%" or "\" in the hook/caption would otherwise abort the render.
+        `drawtext=${fontArg}:textfile='${hookFile}':expansion=none:fontcolor=white:fontsize=64:line_spacing=12:x=(w-text_w)/2:y=150+(330-text_h)/2`,
+        `drawtext=${fontArg}:textfile='${capFile}':expansion=none:fontcolor=white:fontsize=48:line_spacing=10:box=1:boxcolor=0x6a1b9a@0.85:boxborderw=24:x=(w-text_w)/2:y=h-text_h-260`,
         "drawtext=" + fontArg + ":text='A Cup of Compassion':fontcolor=white:fontsize=36:box=1:boxcolor=0x6a1b9a@0.9:boxborderw=14:x=(w-text_w)/2:y=h-120",
       ].join(",");
       const r = await run(FFMPEG, [

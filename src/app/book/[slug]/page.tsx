@@ -8,6 +8,9 @@ import { bookSlot } from "../actions";
 
 export const dynamic = "force-dynamic";
 
+/** e.g. "Pacific Time" — the booking time zone is a setting, so never hard-code it. */
+const tzLabel = (tz: string) => new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "longGeneric" }).formatToParts(new Date()).find((p) => p.type === "timeZoneName")?.value ?? tz;
+
 export default async function BookType({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ error?: string }> }) {
   const { slug } = await params;
   const { error } = await searchParams;
@@ -32,7 +35,7 @@ export default async function BookType({ params, searchParams }: { params: Promi
       {error && <p className="mt-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
       <form action={bookSlot.bind(null, type.slug)} className="mt-6 grid gap-6 md:grid-cols-5">
         <div className="space-y-4 md:col-span-3">
-          <h2 className="font-semibold text-brand-ink">Choose a time <span className="text-xs font-normal text-zinc-500">(Pacific time)</span></h2>
+          <h2 className="font-semibold text-brand-ink">Choose a time <span className="text-xs font-normal text-zinc-500">({tzLabel(tz)})</span></h2>
           {byDay.size === 0 && <p className="text-sm text-zinc-600">No open times in the next three weeks. Please call (323) 943-ACUP.</p>}
           {[...byDay.entries()].map(([day, ds]) => (
             <fieldset key={day} className="rounded-xl border border-zinc-200 bg-white p-3">
@@ -50,10 +53,10 @@ export default async function BookType({ params, searchParams }: { params: Promi
         </div>
         <div className="space-y-3 md:col-span-2">
           <h2 className="font-semibold text-brand-ink">Your details</h2>
-          <input name="name" required placeholder="Full name" className="h-10 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm" />
-          <input name="email" type="email" placeholder="Email" className="h-10 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm" />
-          <input name="phone" type="tel" placeholder="Phone" className="h-10 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm" />
-          <textarea name="notes" placeholder="Anything Pamela should know?" className="min-h-24 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm" />
+          <input name="name" required placeholder="Full name" aria-label="Full name" autoComplete="name" className="h-10 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm" />
+          <input name="email" type="email" placeholder="Email" aria-label="Email" autoComplete="email" className="h-10 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm" />
+          <input name="phone" type="tel" placeholder="Phone" aria-label="Phone" autoComplete="tel" className="h-10 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm" />
+          <textarea name="notes" placeholder="Anything Pamela should know?" aria-label="Notes" className="min-h-24 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm" />
           <button className="h-11 w-full rounded-lg bg-brand font-semibold text-white hover:bg-brand-dark">{type.priceCents ? `Continue to payment · ${money(type.priceCents)}` : "Confirm booking"}</button>
         </div>
       </form>

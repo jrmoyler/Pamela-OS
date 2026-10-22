@@ -97,7 +97,13 @@ export async function updateApprovalPayload(id: string, patch: Record<string, un
   if (!cur || cur.status !== "pending") throw new Error("Only pending approvals can be edited.");
   const payload = { ...cur.payload, ...patch };
   const kit = await getSetting("brandKit");
-  await db.update(schema.approvals).set({ payload, brandIssues: brandIssuesFor(payload, kit) }).where(eq(schema.approvals.id, id));
+  // Guard on status so an edit can't land after the item was approved/sent.
+  const [updated] = await db
+    .update(schema.approvals)
+    .set({ payload, brandIssues: brandIssuesFor(payload, kit) })
+    .where(and(eq(schema.approvals.id, id), eq(schema.approvals.status, "pending")))
+    .returning({ id: schema.approvals.id });
+  if (!updated) throw new Error("Only pending approvals can be edited.");
 }
 
 export async function applyBrandFixes(id: string) {
@@ -131,7 +137,7 @@ export async function approveAndExecute(id: string): Promise<Approval> {
     .returning();
   if (!row) throw new Error("This item is no longer pending.");
   if (row.scheduledFor && row.scheduledFor.getTime() > Date.now()) return row; // the scheduler sends it later
-  return executeAndRecord(row);
+  return (await executeAndRecord(row)) ?? row;
 }
 
 /** Sends approved items whose scheduled time has arrived. */
@@ -142,22 +148,34 @@ export async function runDueApprovals(now = new Date()) {
     .from(schema.approvals)
     .where(and(eq(schema.approvals.status, "approved"), lte(schema.approvals.scheduledFor, now), isNull(schema.approvals.executedAt)))
     .limit(50);
-  for (const row of due) await executeAndRecord(row);
-  return due.length;
+  let sent = 0;
+  for (const row of due) if (await executeAndRecord(row)) sent++;
+  return sent;
 }
 
-async function executeAndRecord(row: Approval): Promise<Approval> {
+/**
+ * Atomically claims an approved row (executedAt null → now) so that the
+ * scheduler running in several places (cron, worker, heartbeat) and
+ * approveAndExecute can never deliver the same item twice.
+ */
+async function claimForExecution(id: string): Promise<Approval | null> {
+  const db = await getDb();
+  const [claimed] = await db
+    .update(schema.approvals)
+    .set({ executedAt: new Date() })
+    .where(and(eq(schema.approvals.id, id), eq(schema.approvals.status, "approved"), isNull(schema.approvals.executedAt)))
+    .returning();
+  return claimed ?? null;
+}
+
+async function executeAndRecord(row: Approval): Promise<Approval | null> {
   const db = await getDb();
   const id = row.id;
+  const claimed = await claimForExecution(id);
+  if (!claimed) return null; // someone else is already delivering it
+  let result: ExecResult;
   try {
-    const result = await execute(row);
-    const [done] = await db
-      .update(schema.approvals)
-      .set({ status: "sent", executedAt: new Date(), result: result as unknown as Record<string, unknown>, error: null })
-      .where(eq(schema.approvals.id, id))
-      .returning();
-    await emit("approval.executed", { approvalId: id, kind: row.kind, contactId: row.contactId, simulated: result.simulated }, "approvals");
-    return done;
+    result = await execute(claimed);
   } catch (e) {
     const msg = (e as Error).message;
     const [failed] = await db
@@ -168,6 +186,15 @@ async function executeAndRecord(row: Approval): Promise<Approval> {
     await emit("approval.failed", { approvalId: id, kind: row.kind, error: msg }, "approvals");
     return failed;
   }
+  // Delivery succeeded: record it outside the try so a bookkeeping error can
+  // never flip a delivered item to "failed" (and invite a duplicate retry).
+  const [done] = await db
+    .update(schema.approvals)
+    .set({ status: "sent", executedAt: new Date(), result: result as unknown as Record<string, unknown>, error: null })
+    .where(eq(schema.approvals.id, id))
+    .returning();
+  await emit("approval.executed", { approvalId: id, kind: row.kind, contactId: row.contactId, simulated: result.simulated }, "approvals");
+  return done;
 }
 
 /** Failed items can be put back in the queue after fixing the connection. */
@@ -340,8 +367,9 @@ export async function campaignAudience(tags: string[], channel: string) {
 }
 
 export function personalize(text: string, c: { firstName: string; lastName: string; email: string | null; phone: string | null }) {
+  // Function replacers so "$&", "$1" etc. in a contact's name are inserted literally.
   return text
-    .replace(/\{\{\s*first_?name\s*\}\}/gi, c.firstName || "friend")
-    .replace(/\{\{\s*last_?name\s*\}\}/gi, c.lastName || "")
-    .replace(/\{\{\s*name\s*\}\}/gi, contactName(c));
+    .replace(/\{\{\s*first_?name\s*\}\}/gi, () => c.firstName || "friend")
+    .replace(/\{\{\s*last_?name\s*\}\}/gi, () => c.lastName || "")
+    .replace(/\{\{\s*name\s*\}\}/gi, () => contactName(c));
 }

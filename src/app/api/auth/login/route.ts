@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   }
 
   const next = String(form.get("next") || "/");
-  const res = back(req, next.startsWith("/") && !next.startsWith("//") ? next : "/");
+  const res = back(req, /^\/(?![/\\])/.test(next) ? next : "/");
   res.cookies.set(SESSION_COOKIE, await signSession({ uid: user.id, email: user.email, name: user.name }), {
     httpOnly: true,
     sameSite: "lax",

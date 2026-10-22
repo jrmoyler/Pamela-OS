@@ -35,6 +35,7 @@ export async function createEmbeddedCheckout(paymentId: string): Promise<{ clien
   const payment = await getPayment(paymentId);
   if (!payment) throw new Error("Payment not found");
   if (payment.status === "paid") throw new Error("Already paid");
+  if (payment.status === "refunded" || payment.status === "failed") throw new Error("This payment link is no longer active");
   const db = await getDb();
   let email: string | undefined;
   if (payment.contactId) {
@@ -73,6 +74,8 @@ export async function confirmCheckoutSession(paymentId: string, sessionId: strin
 
 /** Idempotent: timeline, event bus and any booking waiting on this payment. */
 export async function markPaymentPaid(paymentId: string, ref: { sessionId?: string | null; paymentIntentId?: string | null }) {
+  // Other Checkout integrations on the same Stripe account may send non-UUID references.
+  if (!/^[0-9a-f-]{36}$/i.test(paymentId)) return null;
   const db = await getDb();
   const [updated] = await db
     .update(schema.payments)

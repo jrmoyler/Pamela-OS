@@ -7,6 +7,7 @@ import { getDb, schema } from "@/lib/db";
 import { campaignAudience, createApproval } from "@/lib/approvals";
 import { draftInHerVoice } from "@/lib/rj/voice";
 import { enroll } from "@/lib/sequences";
+import { requireSession } from "@/lib/auth";
 
 const splitList = (v: FormDataEntryValue | null) =>
   String(v ?? "")
@@ -19,12 +20,14 @@ function audienceFrom(form: FormData) {
 }
 
 export async function countAudience(tags: string[], channel: string) {
+  await requireSession();
   return (await campaignAudience(tags, channel)).length;
 }
 
 /* ───────────── Broadcasts ───────────── */
 
 export async function createCampaign(form: FormData) {
+  await requireSession();
   const db = await getDb();
   const [c] = await db
     .insert(schema.campaigns)
@@ -34,6 +37,7 @@ export async function createCampaign(form: FormData) {
 }
 
 export async function saveCampaign(id: string, form: FormData) {
+  await requireSession();
   const db = await getDb();
   await db
     .update(schema.campaigns)
@@ -49,6 +53,7 @@ export async function saveCampaign(id: string, form: FormData) {
 }
 
 export async function rjDraftCampaign(id: string, form: FormData) {
+  await requireSession();
   const db = await getDb();
   const [c] = await db.select().from(schema.campaigns).where(eq(schema.campaigns.id, id));
   if (!c || c.status !== "draft") return;
@@ -67,6 +72,7 @@ export async function rjDraftCampaign(id: string, form: FormData) {
 
 /** Broadcasts never go out without Pamela's approval. */
 export async function sendCampaign(id: string, form: FormData) {
+  await requireSession();
   await saveCampaign(id, form);
   const db = await getDb();
   const [c] = await db.select().from(schema.campaigns).where(eq(schema.campaigns.id, id));
@@ -88,6 +94,7 @@ export async function sendCampaign(id: string, form: FormData) {
 }
 
 export async function duplicateCampaign(id: string) {
+  await requireSession();
   const db = await getDb();
   const [c] = await db.select().from(schema.campaigns).where(eq(schema.campaigns.id, id));
   if (!c) return;
@@ -99,6 +106,7 @@ export async function duplicateCampaign(id: string) {
 }
 
 export async function deleteCampaign(id: string) {
+  await requireSession();
   const db = await getDb();
   await db.delete(schema.campaigns).where(eq(schema.campaigns.id, id));
   redirect("/campaigns");
@@ -107,6 +115,7 @@ export async function deleteCampaign(id: string) {
 /* ───────────── Sequences ───────────── */
 
 export async function createSequence(form: FormData) {
+  await requireSession();
   const db = await getDb();
   const [s] = await db
     .insert(schema.sequences)
@@ -117,6 +126,7 @@ export async function createSequence(form: FormData) {
 }
 
 export async function saveSequence(id: string, form: FormData) {
+  await requireSession();
   const db = await getDb();
   const key = String(form.get("filterKey") || "").trim();
   const value = String(form.get("filterValue") || "").trim();
@@ -140,6 +150,7 @@ async function steps(id: string) {
 const toMinutes = (form: FormData) => Math.max(0, Math.round(Number(form.get("delay") || 0) * Number(form.get("unit") || 1)));
 
 export async function addStep(id: string, form: FormData) {
+  await requireSession();
   const db = await getDb();
   const existing = await steps(id);
   await db.insert(schema.sequenceSteps).values({
@@ -154,6 +165,7 @@ export async function addStep(id: string, form: FormData) {
 }
 
 export async function saveStep(id: string, stepId: string, form: FormData) {
+  await requireSession();
   const db = await getDb();
   await db
     .update(schema.sequenceSteps)
@@ -174,6 +186,7 @@ async function renumber(id: string, ordered: { id: string }[]) {
 }
 
 export async function moveStep(id: string, stepId: string, dir: number) {
+  await requireSession();
   const list = await steps(id);
   const i = list.findIndex((s) => s.id === stepId);
   const j = i + dir;
@@ -183,24 +196,28 @@ export async function moveStep(id: string, stepId: string, dir: number) {
 }
 
 export async function deleteStep(id: string, stepId: string) {
+  await requireSession();
   const db = await getDb();
   await db.delete(schema.sequenceSteps).where(eq(schema.sequenceSteps.id, stepId));
   await renumber(id, await steps(id));
 }
 
 export async function manualEnroll(id: string, form: FormData) {
+  await requireSession();
   const contactId = String(form.get("contactId") || "");
   if (contactId) await enroll(id, contactId);
   revalidatePath(`/campaigns/sequences/${id}`);
 }
 
 export async function stopEnrollment(id: string, enrollmentId: string) {
+  await requireSession();
   const db = await getDb();
   await db.update(schema.enrollments).set({ status: "stopped", nextRunAt: null }).where(eq(schema.enrollments.id, enrollmentId));
   revalidatePath(`/campaigns/sequences/${id}`);
 }
 
 export async function deleteSequence(id: string) {
+  await requireSession();
   const db = await getDb();
   await db.delete(schema.sequences).where(eq(schema.sequences.id, id));
   redirect("/campaigns/sequences");

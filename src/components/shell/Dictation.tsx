@@ -168,6 +168,8 @@ export function Dictation() {
         <button
           type="button"
           title={cleanup ? "AI cleanup on" : "AI cleanup off"}
+          aria-label="AI cleanup of dictation"
+          aria-pressed={cleanup}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
             const v = !cleanup;

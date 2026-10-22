@@ -11,6 +11,8 @@ import { saveSummary, saveActionItems, createTasks, renameSpeaker, reprocess, dr
 
 export default async function MeetingPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string }> }) {
   const { id } = await params;
+  // Ids are uuids; anything else would make Postgres throw (500) instead of a 404.
+  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const { error } = await searchParams;
   const db = await getDb();
   const [m] = await db.select().from(schema.meetings).where(eq(schema.meetings.id, id));

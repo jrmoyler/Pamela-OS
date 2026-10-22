@@ -89,7 +89,7 @@ export default async function TodayPage() {
               subtitle={briefing ? `Prepared ${timeAgo(briefing.createdAt)} · ${briefing.provider}` : "Builds automatically after 6 AM"}
               action={
                 <form action={refreshBriefing}>
-                  <Button size="sm" variant="ghost" title="Rebuild"><RefreshCw className="h-4 w-4" /></Button>
+                  <Button size="sm" variant="ghost" title="Rebuild" aria-label="Rebuild morning read"><RefreshCw className="h-4 w-4" /></Button>
                 </form>
               }
             />
@@ -102,8 +102,8 @@ export default async function TodayPage() {
           <Card>
             <CardHeader title="Due this week" action={<Link href="/work" className="text-sm text-brand hover:underline">All work</Link>} />
             <form action={createTask} className="flex flex-wrap gap-2 border-b border-zinc-100 px-4 py-3">
-              <Input name="title" placeholder="Quick add a task…" required className="min-w-40 flex-1" />
-              <Input name="due" type="date" className="w-40" defaultValue={localDateKey(now, tz)} />
+              <Input name="title" aria-label="New task" placeholder="Quick add a task…" required className="min-w-40 flex-1" />
+              <Input name="due" type="date" aria-label="Due date" className="w-40" defaultValue={localDateKey(now, tz)} />
               <Button size="md">Add</Button>
             </form>
             <ul className="divide-y divide-zinc-100">

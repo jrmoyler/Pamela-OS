@@ -12,6 +12,8 @@ import { saveClip, approveClip, rejectClip, restoreClip, reprocess, deleteVideo,
 
 export default async function VideoDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // Ids are uuids; anything else would make Postgres throw (500) instead of a 404.
+  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const db = await getDb();
   const [video] = await db.select().from(schema.videos).where(eq(schema.videos.id, id));
   if (!video) notFound();
@@ -80,9 +82,10 @@ export default async function VideoDetail({ params }: { params: Promise<{ id: st
                       <div className="flex flex-wrap items-center gap-3 border-t border-zinc-100 pt-3">
                         <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" name="platforms" value="instagram" defaultChecked className="accent-brand" /> Instagram Reels</label>
                         <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" name="platforms" value="facebook" className="accent-brand" /> Facebook</label>
-                        <Button formAction={approveClip.bind(null, id, c.id)} size="sm"><Check className="h-4 w-4" /> Approve & render</Button>
-                        <Button formAction={saveClip.bind(null, id, c.id)} size="sm" variant="outline">Save edits</Button>
-                        <Button formAction={rejectClip.bind(null, id, c.id)} size="sm" variant="ghost"><X className="h-4 w-4" /> Reject</Button>
+                        {/* "Save edits" is first in the DOM so Enter in a field saves rather than approving; `order` keeps the visual order. */}
+                        <Button formAction={saveClip.bind(null, id, c.id)} size="sm" variant="outline" className="order-2">Save edits</Button>
+                        <Button formAction={approveClip.bind(null, id, c.id)} size="sm" className="order-1"><Check className="h-4 w-4" /> Approve & render</Button>
+                        <Button formAction={rejectClip.bind(null, id, c.id)} size="sm" variant="ghost" className="order-3"><X className="h-4 w-4" /> Reject</Button>
                       </div>
                     )}
                     {c.status === "rejected" && (
