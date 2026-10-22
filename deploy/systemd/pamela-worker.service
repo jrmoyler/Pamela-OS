@@ -1,0 +1,15 @@
+[Unit]
+Description=Pamela OS worker (jobs + scheduler)
+After=network-online.target
+
+[Service]
+Type=simple
+User=pamela
+WorkingDirectory=/opt/pamela-os
+EnvironmentFile=/opt/pamela-os/.env
+ExecStart=/usr/bin/npm run worker
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

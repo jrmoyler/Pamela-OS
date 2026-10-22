@@ -101,8 +101,8 @@ export default async function TodayPage() {
 
           <Card>
             <CardHeader title="Due this week" action={<Link href="/work" className="text-sm text-brand hover:underline">All work</Link>} />
-            <form action={createTask} className="flex gap-2 border-b border-zinc-100 px-4 py-3">
-              <Input name="title" placeholder="Quick add a task…" required />
+            <form action={createTask} className="flex flex-wrap gap-2 border-b border-zinc-100 px-4 py-3">
+              <Input name="title" placeholder="Quick add a task…" required className="min-w-40 flex-1" />
               <Input name="due" type="date" className="w-40" defaultValue={localDateKey(now, tz)} />
               <Button size="md">Add</Button>
             </form>

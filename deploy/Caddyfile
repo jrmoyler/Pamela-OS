@@ -1,0 +1,9 @@
+# Single-VPS reverse proxy with automatic HTTPS.
+os.acupofcompassion.com {
+	reverse_proxy 127.0.0.1:3000
+}
+
+# Hermes Agent API server (set the port to whatever your Hermes API server listens on).
+rj.acupofcompassion.com {
+	reverse_proxy 127.0.0.1:8642
+}

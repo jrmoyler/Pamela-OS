@@ -57,3 +57,8 @@ body {
 .recording-pulse {
   animation: pulse-ring 1.2s ease-out infinite;
 }
+
+/* Grid children may shrink below their content width (prevents mobile overflow). */
+.grid > * {
+  min-width: 0;
+}
