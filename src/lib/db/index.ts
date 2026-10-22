@@ -1,7 +1,7 @@
 import path from "node:path";
-import fs from "node:fs";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import * as schema from "./schema";
+import { localDir } from "../localdir";
 
 export type DB = PostgresJsDatabase<typeof schema>;
 
@@ -23,12 +23,11 @@ async function connect(): Promise<DB> {
     if (process.env.SKIP_AUTO_MIGRATE !== "1") await migrate(db, { migrationsFolder });
     return db;
   }
-  // Zero-config local mode: embedded Postgres (PGlite) persisted to ./.data
+  // Zero-config local mode: embedded Postgres (PGlite) persisted to ./.data (temp dir on read-only hosts)
   const { PGlite } = await import("@electric-sql/pglite");
   const { drizzle } = await import("drizzle-orm/pglite");
   const { migrate } = await import("drizzle-orm/pglite/migrator");
-  const dir = process.env.PGLITE_DIR ?? path.join(process.cwd(), ".data", "pglite");
-  fs.mkdirSync(dir, { recursive: true });
+  const dir = localDir(path.join(".data", "pglite"), process.env.PGLITE_DIR);
   const client = new PGlite(dir);
   const db = drizzle(client, { schema });
   await migrate(db, { migrationsFolder });
