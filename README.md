@@ -57,6 +57,7 @@ npm run build          # production build
 | Event bus / glue | `src/lib/events.ts`, `src/lib/automations.ts`, `src/lib/sequences.ts` |
 | Scheduler | `src/lib/scheduler.ts`, run by `/api/cron/tick` (Vercel cron), the VPS worker, or the open app's heartbeat |
 | Operator (RJ) | `src/lib/rj/` (agent tool loop, tools, morning read, her-voice drafting) |
+| Command Center | `src/lib/hub/` (MCP server, agent keys, inbox, file sources, Hermes computer bridge) |
 
 ### Non-negotiables and how they're enforced
 
@@ -74,6 +75,8 @@ npm run build          # production build
 | Module | Route(s) | Notes |
 |---|---|---|
 | Today | `/` | RJ morning read, due this week, next 3 days, receptionist, failures |
+| Command Center | `/hub`, `/hub/connect` | Inbox of everything agents and folders push in, ask any model directly, hand tasks to Hermes on her computer, service status, agent keys |
+| Library | `/library` | Every file: uploads, studio output, links, Google Drive, Dropbox, and files pushed by Claude, ChatGPT, Meta Muse or Hermes |
 | RJ · Operator | `/rj` | Tool-calling agent over her data. Drafts land in Approvals |
 | Approvals | `/approvals` | Edit, brand-fix, approve, reject, retry. Sandbox/live delivery |
 | Work | `/work`, `/work/[board]` | Due-this-week dashboard, boards (drag & drop), tasks from meetings/RJ/automations |
@@ -127,9 +130,40 @@ The order per kind of work is editable in **Settings → AI routing**. If a prov
 
 ---
 
+## Command Center: agents in, files in, her computer
+
+Pamela OS is the hub. Outside agents connect *to it*; it pulls files *from* where she keeps them; and it hands computer and browser work to Hermes.
+
+**Agents push in over MCP.** Pamela OS is an MCP server (Streamable HTTP) at `/api/mcp`. In **Command Center → Connect agents**, create one key per agent (Claude, ChatGPT, Meta Muse, Hermes, other). Each key has scopes: `read`, `write`, `computer`. The page shows the setup steps for each agent:
+
+| Agent | How it connects |
+|---|---|
+| Claude (claude.ai / desktop) | Settings → Connectors → Add custom connector → URL `https://…/api/mcp/k/<key>` |
+| Claude Code | `claude mcp add --transport http pamela-os https://…/api/mcp --header "Authorization: Bearer <key>"` |
+| ChatGPT | Developer mode connector → MCP URL `https://…/api/mcp/k/<key>` |
+| Hermes Agent | `mcp_servers` entry in `~/.hermes/config.yaml` with the URL and a Bearer header |
+| Meta Muse, phone shortcuts, Zapier, scripts | `POST /api/inbox` with `Authorization: Bearer <key>` (multipart `file=`, or JSON `{title, body}` / `{name, url}`) |
+
+Tools: `push_file`, `push_note`, `get_file`, `list_inbox`, `request_computer_task`, `computer_task_status`, plus RJ's tools (contacts, tasks, calendar, pipelines, Library search, drafting). Drafted emails and texts still land in Approvals. Everything pushed lands in the Library and the Command Center inbox, and emits `inbox.received` for automations.
+
+The `/api/mcp/k/<key>` form exists because claude.ai and ChatGPT connector screens take only a URL. Treat that URL like a password. Switch a key off in Connect agents to cut access immediately.
+
+**Files are pulled in from connected sources.** In Library you can:
+- **Save from a link.** Any public file link works, including Google Drive, Docs and Dropbox share links, which are rewritten to direct downloads. Links that resolve to private network addresses are refused.
+- **Browse Google Drive / Dropbox and pull files in.** Set `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` (scope `drive.readonly`) and/or `DROPBOX_APP_KEY` / `DROPBOX_APP_SECRET` / `DROPBOX_REFRESH_TOKEN` in Settings → File sources.
+- **Auto-pull a folder.** Set `GDRIVE_INBOX_FOLDER_ID` and/or `DROPBOX_INBOX_PATH`. The scheduler checks every 10 minutes and pulls new files (5 per pass), skipping ones it already has.
+
+**Hermes works on her computer.** Type a task in **Command Center → Your computer**. Hermes never sends, posts or pays, and tasks requested by RJ or an outside agent wait for her approval. There are two delivery modes, switchable on the card:
+- **push**: Pamela OS calls the Hermes API (`HERMES_BASE_URL`) and stores its answer. Use this when Hermes is reachable from the server.
+- **pull**: Hermes, connected with a Hermes key, calls `next_computer_task` on a schedule (for example, a Hermes cron every 2 minutes), does the work, pushes files with `push_file` + `computerTaskId`, then calls `finish_computer_task`. Use this when Hermes runs on her laptop with no inbound access.
+- **auto** (default) uses push when Hermes is connected, otherwise pull.
+
+---
+
 ## Security notes
 
 - Single owner account (scrypt password hash) and signed 30-day session cookie. All app routes are protected by middleware. Public surfaces are limited to `/p`, `/book`, `/pay`, `/api/public/*` and verified webhooks.
 - Webhook signatures are verified (Twilio `X-Twilio-Signature`, Meta `X-Hub-Signature-256`, Stripe `Stripe-Signature`) when their secrets are configured.
 - Media links handed to Twilio and Meta are HMAC-signed and expire.
 - API keys entered in-app are encrypted with `ENCRYPTION_KEY` and never returned to the browser.
+- Agent keys are stored only as SHA-256 hashes, are scoped (`read` / `write` / `computer`), record when they were last used, and can be switched off at any time. Agents can only *draft* outbound messages, and computer tasks they request wait for her approval.

@@ -12,6 +12,9 @@ const PUBLIC = [
   /^\/api\/public\//,
   /^\/api\/webhooks\//,
   /^\/api\/cron\/tick/,
+  // Agent doors: authenticated by agent keys inside the route, not the session cookie.
+  /^\/api\/mcp(\/|$)/,
+  /^\/api\/inbox$/,
   /^\/manifest\.webmanifest$/,
   /^\/sw\.js$/,
   /^\/offline\.html$/,

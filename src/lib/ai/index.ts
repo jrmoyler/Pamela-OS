@@ -165,6 +165,8 @@ export type CompleteOptions = {
   maxTokens?: number;
   json?: boolean;
   prefer?: ProviderId;
+  /** Use exactly this provider, with no fallthrough (the Command Center's "ask a model"). */
+  only?: ProviderId;
 };
 
 /**
@@ -174,7 +176,7 @@ export type CompleteOptions = {
  */
 export async function complete(opts: CompleteOptions): Promise<CompletionResult | null> {
   const routing = await getSetting("aiRouting");
-  const order = [...new Set([...(opts.prefer ? [opts.prefer] : []), ...(routing[opts.task] as ProviderId[])])];
+  const order = opts.only ? [opts.only] : [...new Set([...(opts.prefer ? [opts.prefer] : []), ...(routing[opts.task] as ProviderId[])])];
   const errors: string[] = [];
   for (const id of order) {
     const cfg = await providerConfig(id);
@@ -188,6 +190,7 @@ export async function complete(opts: CompleteOptions): Promise<CompletionResult 
     }
   }
   if (errors.length) console.warn("[ai] all providers failed:", errors.join(" | "));
+  if (opts.only && errors.length) throw new Error(errors[0]);
   return null;
 }
 

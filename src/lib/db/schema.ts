@@ -36,8 +36,67 @@ export const files = pgTable("files", {
   size: integer("size").notNull().default(0),
   storageKey: text("storage_key").notNull(),
   kind: text("kind").notNull().default("other"), // audio | video | image | document | other
+  source: text("source").notNull().default("upload"), // upload | link | gdrive | dropbox | claude | chatgpt | meta | hermes | other
+  sourceRef: text("source_ref"), // external id or URL it came from, used to skip re-imports
+  description: text("description"),
+  tags: text("tags").array().notNull().default([]),
   createdAt: createdAt(),
 });
+
+/* ───────────────────────────── Command Center ───────────────────────────── */
+
+/** Keys for outside agents (Claude, ChatGPT, Meta Muse, Hermes) to reach Pamela OS over MCP / REST. */
+export const agentKeys = pgTable("agent_keys", {
+  id: id(),
+  name: text("name").notNull(),
+  client: text("client").notNull().default("other"), // claude | chatgpt | meta | hermes | other
+  tokenHash: text("token_hash").notNull().unique(),
+  tokenPrefix: text("token_prefix").notNull(),
+  scopes: text("scopes").array().notNull().default([]), // read | write | computer
+  lastUsedAt: ts("last_used_at"),
+  revokedAt: ts("revoked_at"),
+  createdAt: createdAt(),
+});
+
+/** Everything pushed in from outside: files, notes and links from her agents and connected sources. */
+export const inboxItems = pgTable(
+  "inbox_items",
+  {
+    id: id(),
+    kind: text("kind").notNull().default("note"), // file | note | link
+    source: text("source").notNull().default("other"),
+    agentKeyId: uuid("agent_key_id").references(() => agentKeys.id, { onDelete: "set null" }),
+    title: text("title").notNull(),
+    body: text("body"),
+    url: text("url"),
+    fileId: uuid("file_id").references(() => files.id, { onDelete: "set null" }),
+    contactId: uuid("contact_id").references(() => contacts.id, { onDelete: "set null" }),
+    computerTaskId: uuid("computer_task_id"),
+    status: text("status").notNull().default("new"), // new | filed | dismissed
+    createdAt: createdAt(),
+  },
+  (t) => [index("inbox_items_status_idx").on(t.status, t.createdAt)],
+);
+
+/** Work handed to Hermes Agent on her computer: browser and desktop tasks. */
+export const computerTasks = pgTable(
+  "computer_tasks",
+  {
+    id: id(),
+    instruction: text("instruction").notNull(),
+    kind: text("kind").notNull().default("browser"), // browser | computer | files
+    status: text("status").notNull().default("queued"), // awaiting_approval | queued | running | done | failed | cancelled
+    createdBy: text("created_by").notNull().default("user"), // user | rj | claude | chatgpt | meta | other
+    claimedBy: text("claimed_by"), // push (sent to the Hermes API) | pull (Hermes fetched it over MCP)
+    result: text("result"),
+    fileIds: jsonb("file_ids").$type<string[]>().notNull().default([]),
+    error: text("error"),
+    claimedAt: ts("claimed_at"),
+    finishedAt: ts("finished_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("computer_tasks_status_idx").on(t.status, t.createdAt)],
+);
 
 /* ───────────────────────────── CRM ───────────────────────────── */
 

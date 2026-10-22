@@ -17,6 +17,8 @@ import {
   ListTodo,
   Workflow,
   Settings,
+  LayoutDashboard,
+  FolderOpen,
   type LucideIcon,
 } from "lucide-react";
 
@@ -28,9 +30,11 @@ export const NAV: NavGroup[] = [
     label: "Daily",
     items: [
       { href: "/", label: "Today", icon: Sun },
+      { href: "/hub", label: "Command Center", icon: LayoutDashboard },
       { href: "/rj", label: "RJ · Operator", icon: Bot },
       { href: "/approvals", label: "Approvals", icon: CheckCircle2 },
       { href: "/work", label: "Work", icon: ListTodo },
+      { href: "/library", label: "Library", icon: FolderOpen },
     ],
   },
   {

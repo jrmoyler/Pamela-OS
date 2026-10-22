@@ -3,6 +3,7 @@ import { runDueApprovals } from "./approvals";
 import { redispatchStale } from "./events";
 import { runPendingJobsInline } from "./jobs";
 import { ensureTodaysBriefing } from "./rj/briefing";
+import { syncSources } from "./hub/sources";
 
 type G = { __pamelaTick?: Promise<unknown> | null; __pamelaLastTick?: number };
 const g = globalThis as unknown as G;
@@ -28,6 +29,7 @@ export async function tick() {
     await step("events", () => redispatchStale());
     if (process.env.INLINE_JOBS !== "0") await step("jobs", () => runPendingJobsInline(2));
     await step("briefing", () => ensureTodaysBriefing());
+    await step("sources", () => syncSources());
     g.__pamelaLastTick = Date.now();
     return out;
   })();

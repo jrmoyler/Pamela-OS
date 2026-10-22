@@ -319,6 +319,64 @@ export const RJ_TOOLS: RjTool[] = [
       };
     },
   },
+  {
+    name: "search_files",
+    description: "Search Pamela's Library: every file uploaded, made in a studio, pulled from Drive/Dropbox or pushed in by Claude, ChatGPT, Meta Muse or Hermes.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Words in the file name, description or tags. Leave empty for the newest files." },
+        kind: { type: "string", enum: ["audio", "video", "image", "document", "other"] },
+        source: { type: "string", description: "upload, link, gdrive, dropbox, claude, chatgpt, meta or hermes" },
+      },
+    },
+    async run(a) {
+      const db = await getDb();
+      const q = str(a.query).trim();
+      const like = `%${q}%`;
+      const rows = await db
+        .select()
+        .from(schema.files)
+        .where(
+          and(
+            q ? or(ilike(schema.files.name, like), ilike(schema.files.description, like), sql`${q} = any(${schema.files.tags})`) : undefined,
+            a.kind ? eq(schema.files.kind, str(a.kind)) : undefined,
+            a.source ? eq(schema.files.source, str(a.source)) : undefined,
+          ),
+        )
+        .orderBy(desc(schema.files.createdAt))
+        .limit(20);
+      return rows.map((f) => ({ id: f.id, name: f.name, kind: f.kind, mime: f.mime, size: f.size, source: f.source, description: f.description, tags: f.tags, added: f.createdAt.toISOString() }));
+    },
+  },
+  {
+    name: "read_file_text",
+    description: "Read the text of a text-like file in the Library (txt, md, csv, json, html). Returns the first 20,000 characters.",
+    parameters: { type: "object", properties: { fileId: { type: "string" } }, required: ["fileId"] },
+    async run(a) {
+      const { readFile } = await import("../storage");
+      const f = /^[0-9a-f-]{36}$/i.test(str(a.fileId)) ? await readFile(str(a.fileId)) : null;
+      if (!f) return { error: "not found" };
+      if (!/^text\/|json|xml|csv|markdown/.test(f.mime)) return { error: `“${f.name}” is ${f.mime}; only text files can be read here.`, name: f.name, mime: f.mime };
+      return { name: f.name, mime: f.mime, text: f.data.toString("utf8").slice(0, 20_000) };
+    },
+  },
+  {
+    name: "request_computer_task",
+    description:
+      "Ask Hermes to do something on Pamela's computer or in her browser (look something up on a site she's logged into, download a document, organise files). It waits in the Command Center for her yes before Hermes starts. Hermes never sends, posts or pays.",
+    parameters: {
+      type: "object",
+      properties: { instruction: { type: "string" }, kind: { type: "string", enum: ["browser", "computer", "files"] } },
+      required: ["instruction"],
+    },
+    async run(a) {
+      const { createComputerTask } = await import("../hub/computer");
+      const kind = ["browser", "computer", "files"].includes(str(a.kind)) ? (str(a.kind) as "browser") : "browser";
+      const t = await createComputerTask(str(a.instruction), kind, "rj");
+      return { taskId: t.id, status: t.status, note: "Waiting for Pamela's approval in the Command Center." };
+    },
+  },
 ];
 
 export async function runTool(name: string, args: Record<string, unknown>) {
