@@ -15,6 +15,8 @@ export type SettingsShape = {
   aiRouting: { chat: string[]; drafting: string[]; agentic: string[]; summarize: string[] };
   receptionist: { greeting: string; urgentKeywords: string[]; transferNumber: string; enabled: boolean };
   emailFrom: { name: string; address: string };
+  /** How computer tasks reach Hermes: push = call the Hermes API now; pull = Hermes picks them up over MCP; auto = push when Hermes is connected. */
+  computerMode: "auto" | "push" | "pull";
 };
 
 export const DEFAULT_SETTINGS: SettingsShape = {
@@ -40,6 +42,7 @@ export const DEFAULT_SETTINGS: SettingsShape = {
     enabled: true,
   },
   emailFrom: { name: `Pamela | ${BRAND.name}`, address: "pamela@acupofcompassion.com" },
+  computerMode: "auto",
 };
 
 export async function getSetting<K extends keyof SettingsShape>(key: K): Promise<SettingsShape[K]> {
@@ -100,6 +103,14 @@ export const SECRET_DEFS = [
   { key: "SUNO_API_KEY", label: "Suno API key", group: "Studios", secret: true },
   { key: "ELEVENLABS_API_KEY", label: "ElevenLabs API key (voice)", group: "Studios", secret: true },
   { key: "CHATTERBOX_URL", label: "Chatterbox TTS endpoint (VPS)", group: "Studios", secret: false },
+  { key: "GOOGLE_CLIENT_ID", label: "Google OAuth client ID", group: "File sources", secret: false, hint: "For pulling files from Google Drive" },
+  { key: "GOOGLE_CLIENT_SECRET", label: "Google OAuth client secret", group: "File sources", secret: true },
+  { key: "GOOGLE_REFRESH_TOKEN", label: "Google Drive refresh token", group: "File sources", secret: true, hint: "Scope drive.readonly" },
+  { key: "GDRIVE_INBOX_FOLDER_ID", label: "Drive folder to auto-pull", group: "File sources", secret: false, hint: "Optional. New files in this folder are pulled into the Library" },
+  { key: "DROPBOX_APP_KEY", label: "Dropbox app key", group: "File sources", secret: false },
+  { key: "DROPBOX_APP_SECRET", label: "Dropbox app secret", group: "File sources", secret: true },
+  { key: "DROPBOX_REFRESH_TOKEN", label: "Dropbox refresh token", group: "File sources", secret: true },
+  { key: "DROPBOX_INBOX_PATH", label: "Dropbox folder to auto-pull", group: "File sources", secret: false, hint: "Optional, e.g. /Pamela OS inbox" },
   { key: "WORKER_TOKEN", label: "VPS worker token", group: "Infrastructure", secret: true },
 ] as const;
 

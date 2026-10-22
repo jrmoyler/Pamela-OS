@@ -33,6 +33,10 @@ export const EVENT_CATALOG: { type: string; label: string; fields: string[] }[] 
   { type: "approval.executed", label: "Approved item sent", fields: ["approvalId", "kind", "contactId"] },
   { type: "approval.rejected", label: "Draft rejected", fields: ["approvalId", "kind"] },
   { type: "approval.failed", label: "Approved item failed to send", fields: ["approvalId", "kind", "error"] },
+  { type: "inbox.received", label: "File or note pushed in (Claude, ChatGPT, Meta Muse, Hermes, Drive, Dropbox)", fields: ["inboxItemId", "kind", "source", "fileId", "contactId"] },
+  { type: "computer.task_created", label: "Computer task queued for Hermes", fields: ["taskId", "kind", "createdBy", "status"] },
+  { type: "computer.task_done", label: "Hermes finished a computer task", fields: ["taskId", "fileIds"] },
+  { type: "computer.task_failed", label: "Hermes computer task failed", fields: ["taskId", "error"] },
 ];
 
 export type EventRow = typeof schema.events.$inferSelect;

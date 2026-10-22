@@ -25,7 +25,9 @@ export function kindFromMime(mime: string) {
   return "other";
 }
 
-export async function putFile(data: Buffer | Uint8Array, name: string, mime: string) {
+export type FileMeta = { source?: string; sourceRef?: string | null; description?: string | null; tags?: string[] };
+
+export async function putFile(data: Buffer | Uint8Array, name: string, mime: string, meta: FileMeta = {}) {
   const ext = path.extname(name).slice(0, 10) || "";
   const storageKey = `${new Date().toISOString().slice(0, 7)}/${crypto.randomUUID()}${ext}`;
   const sb = supabase();
@@ -44,7 +46,17 @@ export async function putFile(data: Buffer | Uint8Array, name: string, mime: str
   const db = await getDb();
   const [row] = await db
     .insert(schema.files)
-    .values({ name, mime, size: data.byteLength, storageKey, kind: kindFromMime(mime) })
+    .values({
+      name,
+      mime,
+      size: data.byteLength,
+      storageKey,
+      kind: kindFromMime(mime),
+      source: meta.source ?? "upload",
+      sourceRef: meta.sourceRef ?? null,
+      description: meta.description ?? null,
+      tags: meta.tags ?? [],
+    })
     .returning();
   return row;
 }

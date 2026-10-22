@@ -149,3 +149,32 @@ test("range responses honour suffix ranges and reject unsatisfiable ones", async
 test("lowercase brand name is flagged", () => {
   assert.ok(lintBrand("welcome to a cup of compassion").some((i) => i.code === "bare_name"));
 });
+
+test("share links are rewritten to direct downloads", async () => {
+  const { directDownloadUrl } = await import("../src/lib/hub/sources");
+  assert.equal(directDownloadUrl("https://drive.google.com/file/d/abc123/view?usp=sharing"), "https://drive.google.com/uc?export=download&id=abc123");
+  assert.equal(directDownloadUrl("https://docs.google.com/document/d/XYZ/edit"), "https://docs.google.com/document/d/XYZ/export?format=pdf");
+  assert.equal(directDownloadUrl("https://docs.google.com/spreadsheets/d/XYZ/edit#gid=0"), "https://docs.google.com/spreadsheets/d/XYZ/export?format=xlsx");
+  assert.equal(directDownloadUrl("https://www.dropbox.com/scl/fi/a/b.pdf?rlkey=k&dl=0"), "https://www.dropbox.com/scl/fi/a/b.pdf?rlkey=k&dl=1");
+  assert.equal(directDownloadUrl("https://example.com/a.pdf"), "https://example.com/a.pdf");
+});
+
+test("link imports refuse private network addresses", async () => {
+  const { fetchRemote } = await import("../src/lib/hub/sources");
+  for (const u of ["http://127.0.0.1/x", "http://localhost:3000/api/export", "http://169.254.169.254/latest/meta-data", "http://[::1]/", "file:///etc/passwd"]) {
+    await assert.rejects(fetchRemote(u), /private|http/i, u);
+  }
+});
+
+test("MCP tools are limited by the key's scopes", async () => {
+  const { toolsFor } = await import("../src/lib/hub/mcp");
+  const key = (client: string, scopes: string[]) =>
+    ({ id: "k", name: "test", client, scopes, tokenHash: "", tokenPrefix: "", lastUsedAt: null, revokedAt: null, createdAt: new Date() }) as Parameters<typeof toolsFor>[0];
+  const writeOnly = toolsFor(key("meta", ["write"])).map((t) => t.name);
+  assert.ok(writeOnly.includes("push_file") && writeOnly.includes("draft_email"));
+  assert.ok(!writeOnly.includes("search_contacts") && !writeOnly.includes("get_file") && !writeOnly.includes("request_computer_task"));
+  const claude = toolsFor(key("claude", ["read", "write", "computer"])).map((t) => t.name);
+  assert.ok(claude.includes("request_computer_task") && !claude.includes("next_computer_task"));
+  const hermes = toolsFor(key("hermes", ["computer"])).map((t) => t.name);
+  assert.ok(hermes.includes("next_computer_task") && hermes.includes("finish_computer_task"));
+});
