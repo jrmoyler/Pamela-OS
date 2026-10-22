@@ -3,6 +3,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "./db";
+import { localDir } from "./localdir";
 
 /**
  * Object storage. Uses Supabase Storage when SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
@@ -13,7 +14,8 @@ const supabase = () =>
   process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
     ? { url: process.env.SUPABASE_URL.replace(/\/$/, ""), key: process.env.SUPABASE_SERVICE_ROLE_KEY }
     : null;
-const localRoot = () => process.env.STORAGE_DIR || path.join(process.cwd(), "storage");
+let root: string | undefined;
+const localRoot = () => (root ??= localDir("storage", process.env.STORAGE_DIR || undefined));
 
 export function kindFromMime(mime: string) {
   if (mime.startsWith("audio/")) return "audio";
