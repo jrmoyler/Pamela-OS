@@ -88,7 +88,7 @@ export function autoFixBrand(text: string, kit: BrandKit = DEFAULT_BRAND_KIT): s
   let out = text;
   for (const re of ABBREVIATIONS) out = out.replace(new RegExp(re.source, "gi"), kit.name);
   // Normalise every "(a) cup of compassion" spelling to the exact brand name.
-  out = out.replace(/\b(?:a\s+)?cup of compassion\b/gi, kit.name);
+  out = out.replace(/\b(?:(?:a|the)\s+)?cup of compassion\b/gi, kit.name);
   for (const re of PHONE_VARIANTS) out = out.replace(new RegExp(re.source, "gi"), kit.phoneDisplay);
   return out;
 }

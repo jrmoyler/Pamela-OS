@@ -11,7 +11,6 @@ const PUBLIC = [
   /^\/api\/auth\//,
   /^\/api\/public\//,
   /^\/api\/webhooks\//,
-  /^\/api\/worker\//,
   /^\/api\/cron\/tick/,
   /^\/manifest\.webmanifest$/,
   /^\/sw\.js$/,
