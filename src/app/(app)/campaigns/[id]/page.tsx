@@ -16,6 +16,8 @@ export const metadata = { title: "Broadcast" };
 
 export default async function CampaignPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // Ids are uuids; anything else would make Postgres throw (500) instead of a 404.
+  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const db = await getDb();
   let [c] = await db.select().from(schema.campaigns).where(eq(schema.campaigns.id, id));
   if (!c) notFound();

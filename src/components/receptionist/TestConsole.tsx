@@ -87,13 +87,13 @@ export function TestConsole() {
       </div>
       {callId ? (
         <form onSubmit={send} className="flex gap-2">
-          <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="What the caller says…" autoFocus disabled={pending} />
+          <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="What the caller says…" aria-label="What the caller says" autoFocus disabled={pending} />
           <Button disabled={pending} aria-label="Say"><Send className="h-4 w-4" /></Button>
           <Button type="button" variant="danger" onClick={hangup} disabled={pending} aria-label="Hang up"><PhoneOff className="h-4 w-4" /></Button>
         </form>
       ) : (
         <div className="flex gap-2">
-          <Input value={from} onChange={(e) => setFrom(e.target.value)} placeholder="Caller number" className="max-w-48" />
+          <Input value={from} onChange={(e) => setFrom(e.target.value)} placeholder="Caller number" aria-label="Caller number" className="max-w-48" />
           <Button onClick={call} disabled={pending}><PhoneCall className="h-4 w-4" /> Place test call</Button>
         </div>
       )}

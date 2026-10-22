@@ -43,10 +43,17 @@ export function Label({ className, ...props }: React.LabelHTMLAttributes<HTMLLab
 }
 
 export function Field({ label, children, hint, className }: { label: string; children: React.ReactNode; hint?: string; className?: string }) {
+  // Associate the label with a single form control child so it has an accessible name.
+  const autoId = React.useId();
+  const control =
+    React.isValidElement<{ id?: string }>(children) && children.type !== React.Fragment && !(typeof children.type === "string" && !["input", "select", "textarea"].includes(children.type))
+      ? children
+      : null;
+  const id = control ? (control.props.id ?? autoId) : undefined;
   return (
     <div className={className}>
-      <Label>{label}</Label>
-      {children}
+      <Label htmlFor={id}>{label}</Label>
+      {control ? React.cloneElement(control, { id }) : children}
       {hint && <p className="mt-1 text-xs text-zinc-500">{hint}</p>}
     </div>
   );

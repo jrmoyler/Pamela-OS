@@ -52,7 +52,11 @@ export async function runRj(threadId: string, text: string) {
   if (history.length === 1) {
     await db.update(schema.rjThreads).set({ title: text.slice(0, 60) }).where(eq(schema.rjThreads.id, threadId));
   }
-  const messages: ChatMessage[] = [{ role: "system", content: await systemPrompt() }, ...toChat(history.slice(-40))];
+  // Claude requires the conversation to open with a user turn, so never start the window on an assistant row.
+  let recent = history.slice(-40);
+  const firstUser = recent.findIndex((m) => m.role === "user");
+  if (firstUser > 0) recent = recent.slice(firstUser);
+  const messages: ChatMessage[] = [{ role: "system", content: await systemPrompt() }, ...toChat(recent)];
   const tools = RJ_TOOLS.map(({ name, description, parameters }) => ({ name, description, parameters }));
   const executed: { id: string; name: string; args: Record<string, unknown>; result?: unknown }[] = [];
   let provider: ProviderId | "offline" = "offline";
@@ -68,13 +72,17 @@ export async function runRj(threadId: string, text: string) {
       final = r.content;
       break;
     }
-    messages.push({ role: "assistant", content: r.content, toolCalls: r.toolCalls });
+    messages.push({ role: "assistant", content: r.content, toolCalls: r.toolCalls, raw: r.raw });
     for (const call of r.toolCalls) {
       const result = await runTool(call.name, call.args);
       executed.push({ ...call, result });
       messages.push({ role: "tool", toolCallId: call.id, name: call.name, content: JSON.stringify(result).slice(0, 6000) });
     }
     if (round === MAX_ROUNDS - 1) final = r.content || "I've done what I can for now — check the results above.";
+  }
+  // A model can go quiet after running tools (provider failed mid-loop, or an empty reply); never store a blank answer.
+  if (provider !== "offline" && !final.trim()) {
+    final = executed.length ? "I've done what I can for now — check the results above." : "I couldn't come up with a reply just now. Please try again.";
   }
 
   if (provider === "offline") {
@@ -105,13 +113,29 @@ export async function offlineRj(text: string): Promise<{ reply: string; calls: T
   };
   const note = "\n\n_Connect Hermes, Meta Muse, Claude, ChatGPT or Gemini in Settings for full conversations._";
 
-  if (/\b(brief|morning|triage|today|what('s| is) up|catch me up)\b/i.test(t)) {
-    return { reply: `Here's where things stand:\n\n${await call("daily_triage", {})}`, calls };
-  }
   let m = t.match(/^(?:add|create|new)\s+(?:a\s+)?task:?\s+(.+?)(?:\s+(?:due|by)\s+(today|tomorrow|in \d+ days?|\d{4}-\d{2}-\d{2}))?$/i);
   if (m) {
     const r = await call("create_task", { title: m[1], due: m[2] });
+    if ((r as { error?: string }).error) return { reply: `Couldn't add the task: ${(r as { error: string }).error}.`, calls };
     return { reply: `Added the task “${(r as { title: string }).title}”${m[2] ? ` due ${m[2]}` : ""}.`, calls };
+  }
+  m = t.match(/^(?:draft|write)\s+(?:an?\s+)?(email|text)\s+to\s+(.+?)\s+(?:about|saying|re:?)\s+(.+)$/i);
+  if (m) {
+    const [, kind, who, about] = m;
+    const people = (await call("search_contacts", { query: who })) as { id: string; name: string }[];
+    if (!people.length) return { reply: `I couldn't find “${who}” in your contacts.`, calls };
+    const { draftInHerVoice } = await import("./voice");
+    const db = await getDb();
+    const [contact] = await db.select().from(schema.contacts).where(eq(schema.contacts.id, people[0].id));
+    const d = await draftInHerVoice({ channel: kind.toLowerCase() === "text" ? "sms" : "email", instructions: about, contact });
+    const r = kind.toLowerCase() === "text" ? await call("draft_text", { contactId: contact.id, body: d.body }) : await call("draft_email", { contactId: contact.id, subject: d.subject, body: d.body });
+    if ((r as { error?: string }).error) return { reply: `Couldn't draft: ${(r as { error: string }).error}.`, calls };
+    return { reply: `Drafted a ${kind.toLowerCase()} to ${people[0].name}. It's in Approvals waiting for your yes.`, calls };
+  }
+  if (/\b(brief|morning|triage|today|what('s| is) up|catch me up)\b/i.test(t) && !/\b(due|tasks?|to-?do)\b/i.test(t)) {
+    const brief = await call("daily_triage", {});
+    if (typeof brief !== "string") return { reply: `I couldn't pull your brief: ${(brief as { error?: string }).error ?? "unknown error"}.`, calls };
+    return { reply: `Here's where things stand:\n\n${brief}`, calls };
   }
   if (/\b(due|tasks?|to-?do)\b/i.test(t)) {
     const scope = /overdue/i.test(t) ? "overdue" : /today/i.test(t) ? "today" : "week";
@@ -127,21 +151,10 @@ export async function offlineRj(text: string): Promise<{ reply: string; calls: T
     return { reply: rows.length ? `Next 7 days:\n${rows.map((r) => `- ${r.when} — ${r.title}${r.with ? ` with ${r.with}` : ""}`).join("\n")}` : "Nothing booked in the next 7 days.", calls };
   }
   if (/\b(open|free|available)\b.*\b(slots?|times?)\b/i.test(t)) {
-    const r = (await call("find_open_slots", { days: 7 })) as { bookingType: string; slots: string[] };
+    const r = (await call("find_open_slots", { days: 7 })) as { bookingType: string; slots: string[]; error?: string };
+    if (r.error || !r.slots) return { reply: `I couldn't look up open times: ${r.error ?? "unknown error"}.`, calls };
+    if (!r.slots.length) return { reply: `No open ${r.bookingType} times in the next 7 days.`, calls };
     return { reply: `Open ${r.bookingType} times:\n${r.slots.map((s) => `- ${s}`).join("\n")}`, calls };
-  }
-  m = t.match(/^(?:draft|write)\s+(?:an?\s+)?(email|text)\s+to\s+(.+?)\s+(?:about|saying|re:?)\s+(.+)$/i);
-  if (m) {
-    const [, kind, who, about] = m;
-    const people = (await call("search_contacts", { query: who })) as { id: string; name: string }[];
-    if (!people.length) return { reply: `I couldn't find “${who}” in your contacts.`, calls };
-    const { draftInHerVoice } = await import("./voice");
-    const db = await getDb();
-    const [contact] = await db.select().from(schema.contacts).where(eq(schema.contacts.id, people[0].id));
-    const d = await draftInHerVoice({ channel: kind.toLowerCase() === "text" ? "sms" : "email", instructions: about, contact });
-    const r = kind.toLowerCase() === "text" ? await call("draft_text", { contactId: contact.id, body: d.body }) : await call("draft_email", { contactId: contact.id, subject: d.subject, body: d.body });
-    if ((r as { error?: string }).error) return { reply: `Couldn't draft: ${(r as { error: string }).error}.`, calls };
-    return { reply: `Drafted a ${kind.toLowerCase()} to ${people[0].name}. It's in Approvals waiting for your yes.`, calls };
   }
   m = t.match(/^(?:find|who is|look up|search)\s+(.+)$/i);
   if (m) {

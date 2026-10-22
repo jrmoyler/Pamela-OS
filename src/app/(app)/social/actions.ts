@@ -10,6 +10,7 @@ import { zonedToUtc } from "@/lib/time";
 import { createApproval } from "@/lib/approvals";
 import { draftInHerVoice } from "@/lib/rj/voice";
 import { handleComment, handleInboundDm, type Platform } from "@/lib/modules/social";
+import { requireSession } from "@/lib/auth";
 
 const platformOf = (v: FormDataEntryValue | null): Platform => (v === "facebook" ? "facebook" : "instagram");
 const tagList = (v: FormDataEntryValue | null) =>
@@ -21,6 +22,7 @@ const tagList = (v: FormDataEntryValue | null) =>
 /* ───────────── Comment-to-DM triggers ───────────── */
 
 export async function saveTrigger(form: FormData) {
+  await requireSession();
   const db = await getDb();
   const id = String(form.get("id") || "");
   const values = {
@@ -40,12 +42,14 @@ export async function saveTrigger(form: FormData) {
 }
 
 export async function toggleTrigger(id: string, enabled: boolean) {
+  await requireSession();
   const db = await getDb();
   await db.update(schema.socialTriggers).set({ enabled }).where(eq(schema.socialTriggers.id, id));
   revalidatePath("/social");
 }
 
 export async function deleteTrigger(id: string) {
+  await requireSession();
   const db = await getDb();
   await db.delete(schema.socialTriggers).where(eq(schema.socialTriggers.id, id));
   revalidatePath("/social");
@@ -53,6 +57,7 @@ export async function deleteTrigger(id: string) {
 
 /** Runs the exact webhook handler with a fake comment — testable without Meta. */
 export async function simulateComment(form: FormData) {
+  await requireSession();
   const platform = platformOf(form.get("platform"));
   const kind = String(form.get("kind") || "comment");
   const username = String(form.get("username") || "test.follower").trim();
@@ -69,6 +74,7 @@ export async function simulateComment(form: FormData) {
 /* ───────────── Posts ───────────── */
 
 export async function createPost(form: FormData) {
+  await requireSession();
   const db = await getDb();
   const caption = String(form.get("caption") || "").trim();
   if (!caption) throw new Error("Write a caption first.");
@@ -104,6 +110,7 @@ export async function createPost(form: FormData) {
 }
 
 export async function draftCaption(form: FormData) {
+  await requireSession();
   const about = String(form.get("about") || "").trim();
   if (!about) redirect("/social/posts");
   const draft = await draftInHerVoice({
@@ -114,6 +121,7 @@ export async function draftCaption(form: FormData) {
 }
 
 export async function deletePost(id: string) {
+  await requireSession();
   const db = await getDb();
   await db.delete(schema.socialPosts).where(eq(schema.socialPosts.id, id));
   revalidatePath("/social/posts");

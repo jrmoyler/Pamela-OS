@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq, notInArray } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { putFile } from "@/lib/storage";
 import { enqueue, runPendingJobsInline } from "@/lib/jobs";
@@ -12,10 +12,12 @@ import { contactName, normalizePhone } from "@/lib/crm";
 import { aiText } from "@/lib/ai";
 import { herVoiceSystem } from "@/lib/rj/voice";
 import { createCloneWithProvider } from "@/lib/modules/voice";
+import { requireSession } from "@/lib/auth";
 
 const PATH = "/studio/voice";
 
 export async function createClone(form: FormData) {
+  await requireSession();
   if (form.get("consent") !== "on") throw new Error("Please confirm consent before creating a voice clone.");
   const files = form.getAll("samples").filter((f): f is File => f instanceof File && f.size > 0);
   const sampleFileIds: string[] = [];
@@ -31,6 +33,7 @@ export async function createClone(form: FormData) {
 }
 
 export async function activateClone(id: string) {
+  await requireSession();
   try {
     await createCloneWithProvider(id);
   } finally {
@@ -39,12 +42,14 @@ export async function activateClone(id: string) {
 }
 
 export async function deleteClone(id: string) {
+  await requireSession();
   const db = await getDb();
   await db.delete(schema.voiceClones).where(eq(schema.voiceClones.id, id));
   revalidatePath(PATH);
 }
 
 export async function createDraft(form: FormData) {
+  await requireSession();
   const db = await getDb();
   let script = String(form.get("script") || "").trim();
   const contactId = String(form.get("contactId") || "") || null;
@@ -69,21 +74,30 @@ export async function createDraft(form: FormData) {
 }
 
 export async function updateScript(id: string, form: FormData) {
+  await requireSession();
   const db = await getDb();
+  // Audio under a pending or approved send must stay exactly what Pamela approved.
+  const editable = and(eq(schema.voiceDrafts.id, id), notInArray(schema.voiceDrafts.status, ["awaiting_approval", "approved"]));
   // A new script invalidates any rendered audio.
-  await db.update(schema.voiceDrafts).set({ script: String(form.get("script") || ""), audioFileId: null, status: "draft" }).where(eq(schema.voiceDrafts.id, id));
+  const [row] = await db.update(schema.voiceDrafts).set({ script: String(form.get("script") || ""), audioFileId: null, status: "draft" }).where(editable).returning();
+  if (!row) throw new Error("This voice message is waiting on approval. Reject it in Approvals to edit it.");
   revalidatePath(PATH);
 }
 
 export async function renderDraft(id: string) {
+  await requireSession();
   const db = await getDb();
-  await db.update(schema.voiceDrafts).set({ status: "rendering" }).where(eq(schema.voiceDrafts.id, id));
+  // Audio under a pending or approved send must stay exactly what Pamela approved.
+  const editable = and(eq(schema.voiceDrafts.id, id), notInArray(schema.voiceDrafts.status, ["awaiting_approval", "approved"]));
+  const [row] = await db.update(schema.voiceDrafts).set({ status: "rendering" }).where(editable).returning();
+  if (!row) throw new Error("This voice message is waiting on approval. Reject it in Approvals to re-render it.");
   await enqueue("voice.render", { draftId: id });
   if (process.env.INLINE_JOBS !== "0") after(() => runPendingJobsInline(1, ["voice.render"]).then(() => undefined));
   revalidatePath(PATH);
 }
 
 export async function requestSend(id: string, form: FormData) {
+  await requireSession();
   const db = await getDb();
   const [draft] = await db.select().from(schema.voiceDrafts).where(eq(schema.voiceDrafts.id, id));
   if (!draft?.audioFileId) throw new Error("Render or record the audio first.");
@@ -105,6 +119,7 @@ export async function requestSend(id: string, form: FormData) {
 }
 
 export async function deleteDraft(id: string) {
+  await requireSession();
   const db = await getDb();
   await db.delete(schema.voiceDrafts).where(eq(schema.voiceDrafts.id, id));
   revalidatePath(PATH);

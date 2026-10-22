@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import type { ClipSuggestion } from "@/lib/db/schema";
 import { enqueue, runPendingJobsInline } from "@/lib/jobs";
+import { requireSession } from "@/lib/auth";
 
 async function updateClip(videoId: string, clipId: string, patch: Partial<ClipSuggestion>) {
   const db = await getDb();
@@ -22,12 +23,15 @@ function runSoon(types: string[]) {
 }
 
 export async function saveClip(videoId: string, clipId: string, form: FormData) {
-  const start = Math.max(0, Number(form.get("start")));
-  const end = Math.max(start + 1, Number(form.get("end")));
+  await requireSession();
+  // Blank/invalid numbers would otherwise be stored as NaN and break rendering.
+  const start = Math.max(0, Number(form.get("start")) || 0);
+  const end = Math.max(start + 1, Number(form.get("end")) || 0);
   await updateClip(videoId, clipId, { hook: String(form.get("hook") ?? ""), caption: String(form.get("caption") ?? ""), start, end });
 }
 
 export async function approveClip(videoId: string, clipId: string, form: FormData) {
+  await requireSession();
   await saveClip(videoId, clipId, form);
   const platforms = form.getAll("platforms").map(String).filter((p) => p === "instagram" || p === "facebook");
   await updateClip(videoId, clipId, { status: "approved" });
@@ -36,14 +40,17 @@ export async function approveClip(videoId: string, clipId: string, form: FormDat
 }
 
 export async function rejectClip(videoId: string, clipId: string) {
+  await requireSession();
   await updateClip(videoId, clipId, { status: "rejected" });
 }
 
 export async function restoreClip(videoId: string, clipId: string) {
+  await requireSession();
   await updateClip(videoId, clipId, { status: "suggested" });
 }
 
 export async function addManualClip(videoId: string, form: FormData) {
+  await requireSession();
   const db = await getDb();
   const [v] = await db.select().from(schema.videos).where(eq(schema.videos.id, videoId));
   if (!v) return;
@@ -55,6 +62,7 @@ export async function addManualClip(videoId: string, form: FormData) {
 }
 
 export async function reprocess(videoId: string, form: FormData) {
+  await requireSession();
   const db = await getDb();
   const transcript = String(form.get("transcript") ?? "").trim();
   await db.update(schema.videos).set({ status: "processing", error: null, ...(transcript ? { transcript } : {}) }).where(eq(schema.videos.id, videoId));
@@ -64,6 +72,7 @@ export async function reprocess(videoId: string, form: FormData) {
 }
 
 export async function deleteVideo(videoId: string) {
+  await requireSession();
   const db = await getDb();
   await db.delete(schema.videos).where(eq(schema.videos.id, videoId));
   redirect("/studio/video");

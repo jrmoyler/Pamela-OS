@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Download, Loader2 } from "lucide-react";
 import { Button, Input, Textarea, Field } from "@/components/ui";
@@ -51,6 +51,7 @@ export function DesignEditor({
   const [fields, setFields] = useState<Record<string, string>>(design.fields);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const svg = useMemo(() => renderDesignSvg(t.key, fields, photoUrl), [t.key, fields, photoUrl]);
 
   const exportPng = async () => {
@@ -58,7 +59,8 @@ export function DesignEditor({
     setError(null);
     try {
       const form = new FormData();
-      form.set("title", design.title);
+      // Use the name currently typed in the form, not the one the page loaded with.
+      form.set("title", String((formRef.current && new FormData(formRef.current).get("title")) ?? design.title));
       for (const f of t.fields) if (f !== "photo") form.set(f, fields[f] ?? "");
       await saveAction(form); // persist current fields first (clears any stale export)
       const href = photoUrl ? await toDataUrl(photoUrl) : undefined;
@@ -83,7 +85,7 @@ export function DesignEditor({
           {t.width}×{t.height} · colors, fonts, name and phone footer are locked to the brand kit
         </p>
       </div>
-      <form action={saveAction} className="space-y-3">
+      <form ref={formRef} action={saveAction} className="space-y-3">
         <Field label="Design name">
           <Input name="title" defaultValue={design.title} />
         </Field>

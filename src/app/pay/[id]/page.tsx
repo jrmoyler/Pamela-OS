@@ -37,7 +37,7 @@ export default async function PayPage({ params, searchParams }: { params: Promis
             <h1 className="mt-3 font-serif text-2xl font-bold">Thank you — payment received</h1>
             <p className="mt-2 text-zinc-600">A receipt is on its way. With compassion, Pamela.</p>
           </div>
-        ) : ready && pk ? (
+        ) : ready && pk && payment.status === "pending" ? (
           <div className="rounded-2xl bg-white p-4 shadow-sm">
             <EmbeddedCheckout paymentId={payment.id} publishableKey={pk} />
           </div>

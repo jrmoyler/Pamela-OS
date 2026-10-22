@@ -12,6 +12,8 @@ import { updateContact, addNote, deleteContact, draftMessage, addDealForContact 
 
 export default async function ContactPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // Ids are uuids; anything else would make Postgres throw (500) instead of a 404.
+  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const db = await getDb();
   const [c] = await db.select().from(schema.contacts).where(eq(schema.contacts.id, id));
   if (!c) notFound();

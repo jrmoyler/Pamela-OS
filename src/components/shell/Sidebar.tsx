@@ -62,7 +62,7 @@ export function Sidebar({ pendingApprovals }: { pendingApprovals: number }) {
           <Menu className="h-6 w-6" />
         </button>
         <span className="text-sm font-bold text-white">Pamela OS</span>
-        <Link href="/approvals" className="rounded-full bg-white px-2 text-xs font-bold text-brand">
+        <Link href="/approvals" aria-label={`Approvals: ${pendingApprovals} waiting`} className="rounded-full bg-white px-2 text-xs font-bold text-brand">
           {pendingApprovals}
         </Link>
       </div>

@@ -1,5 +1,10 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { and, asc, eq, isNull, lt } from "drizzle-orm";
 import { getDb, schema } from "./db";
+
+/** How many events deep an automation chain may go (A emits → B emits → …). */
+const MAX_DISPATCH_DEPTH = 5;
+const dispatchDepth = new AsyncLocalStorage<number>();
 
 /**
  * The glue. Every module emits events here; automations and sequences react.
@@ -35,8 +40,18 @@ export type EventRow = typeof schema.events.$inferSelect;
 export async function emit(type: string, payload: Record<string, unknown> = {}, source = "system"): Promise<EventRow> {
   const db = await getDb();
   const [event] = await db.insert(schema.events).values({ type, payload, source }).returning();
+  const depth = dispatchDepth.getStore() ?? 0;
+  if (depth >= MAX_DISPATCH_DEPTH) {
+    // An automation that re-triggers itself (e.g. "deal.created → add to pipeline")
+    // would otherwise recurse forever. Record it as a failed run and stop.
+    const msg = `Stopped “${type}”: automations triggered each other more than ${MAX_DISPATCH_DEPTH} levels deep (possible loop).`;
+    console.error("[events]", msg);
+    await db.insert(schema.automationRuns).values({ eventId: event.id, name: "Event chain stopped", status: "failed", error: msg, finishedAt: new Date() });
+    await db.update(schema.events).set({ processedAt: new Date() }).where(eq(schema.events.id, event.id));
+    return event;
+  }
   try {
-    await dispatch(event);
+    await dispatchDepth.run(depth + 1, () => dispatch(event));
   } catch (e) {
     // Dispatch failures are recorded in automation_runs; never break the caller.
     console.error("[events] dispatch failed", type, e);
@@ -57,12 +72,30 @@ async function dispatch(event: EventRow) {
   await db.update(schema.events).set({ processedAt: new Date() }).where(eq(schema.events.id, event.id));
 }
 
-/** Re-dispatches events that never finished (e.g. the process restarted mid-flight). */
+/**
+ * Re-dispatches events that never finished (e.g. the process restarted mid-flight).
+ * Waits well past the longest request (5 min) so an event still being dispatched by
+ * its original emit() (slow AI drafting) isn't run a second time in parallel.
+ */
+const STALE_AFTER_MS = 10 * 60_000;
 export async function redispatchStale() {
   const db = await getDb();
-  const stale = await db.select().from(schema.events).where(isNull(schema.events.processedAt)).limit(50);
+  const stale = await db
+    .select()
+    .from(schema.events)
+    .where(and(isNull(schema.events.processedAt), lt(schema.events.createdAt, new Date(Date.now() - STALE_AFTER_MS))))
+    .orderBy(asc(schema.events.createdAt))
+    .limit(50);
   for (const e of stale) {
-    if (Date.now() - e.createdAt.getTime() < 60_000) continue;
-    await dispatch(e).catch((err) => console.error("[events] redispatch failed", err));
+    // Claim it first: a second scheduler can't redispatch it concurrently, and an
+    // event whose dispatch keeps failing is retried once instead of every tick
+    // (each retry would re-run its automations and draft duplicate approvals).
+    const [claimed] = await db
+      .update(schema.events)
+      .set({ processedAt: new Date() })
+      .where(and(eq(schema.events.id, e.id), isNull(schema.events.processedAt)))
+      .returning({ id: schema.events.id });
+    if (!claimed) continue;
+    await dispatchDepth.run(1, () => dispatch(e)).catch((err) => console.error("[events] redispatch failed", err));
   }
 }

@@ -11,6 +11,7 @@ import { contactName } from "@/lib/crm";
 import { appUrl } from "@/lib/outbound";
 import { createPaymentRequest } from "@/lib/modules/payments";
 import { PAGE_TEMPLATES, RESERVED_SLUGS, DEFAULT_FORM_FIELDS, blockDef, newBlock, slugify } from "@/lib/modules/funnels";
+import { requireSession } from "@/lib/auth";
 
 async function uniqueSlug(base: string, exceptId?: string) {
   const db = await getDb();
@@ -39,6 +40,7 @@ async function saveBlocks(id: string, blocks: PageBlock[]) {
 /* ───────────── Pages ───────────── */
 
 export async function createPage(form: FormData) {
+  await requireSession();
   const title = String(form.get("title") || "Untitled page").trim();
   const tpl = PAGE_TEMPLATES[String(form.get("template") || "blank")] ?? PAGE_TEMPLATES.blank;
   const blocks = tpl.blocks.map(newBlock);
@@ -53,6 +55,7 @@ export async function createPage(form: FormData) {
 }
 
 export async function updatePageMeta(id: string, form: FormData) {
+  await requireSession();
   const db = await getDb();
   await db
     .update(schema.pages)
@@ -62,6 +65,7 @@ export async function updatePageMeta(id: string, form: FormData) {
 }
 
 export async function addBlock(id: string, form: FormData) {
+  await requireSession();
   const type = String(form.get("type"));
   if (!blockDef(type)) return;
   const page = await getPage(id);
@@ -69,6 +73,7 @@ export async function addBlock(id: string, form: FormData) {
 }
 
 export async function updateBlock(id: string, blockId: string, form: FormData) {
+  await requireSession();
   const page = await getPage(id);
   const blocks = page.blocks.map((b) => ({ ...b, props: { ...b.props } }));
   const block = blocks.find((b) => b.id === blockId);
@@ -94,6 +99,7 @@ export async function updateBlock(id: string, blockId: string, form: FormData) {
 }
 
 export async function moveBlock(id: string, blockId: string, dir: number) {
+  await requireSession();
   const page = await getPage(id);
   const blocks = [...page.blocks];
   const i = blocks.findIndex((b) => b.id === blockId);
@@ -104,6 +110,7 @@ export async function moveBlock(id: string, blockId: string, dir: number) {
 }
 
 export async function deleteBlock(id: string, blockId: string) {
+  await requireSession();
   const page = await getPage(id);
   await saveBlocks(
     id,
@@ -113,6 +120,7 @@ export async function deleteBlock(id: string, blockId: string) {
 
 /** Publishing is an outbound action → approval gate. */
 export async function requestPublish(id: string) {
+  await requireSession();
   const db = await getDb();
   const page = await getPage(id);
   const [pending] = await db
@@ -133,12 +141,14 @@ export async function requestPublish(id: string) {
 }
 
 export async function unpublishPage(id: string) {
+  await requireSession();
   const db = await getDb();
   await db.update(schema.pages).set({ published: false, updatedAt: new Date() }).where(eq(schema.pages.id, id));
   revalidatePath(`/funnels/pages/${id}`);
 }
 
 export async function deletePage(id: string) {
+  await requireSession();
   const db = await getDb();
   await db.delete(schema.pages).where(eq(schema.pages.id, id));
   redirect("/funnels");
@@ -147,6 +157,7 @@ export async function deletePage(id: string) {
 /* ───────────── Forms ───────────── */
 
 export async function createForm(form: FormData) {
+  await requireSession();
   const db = await getDb();
   const [f] = await db
     .insert(schema.forms)
@@ -163,6 +174,7 @@ async function getForm(id: string) {
 }
 
 export async function updateFormSettings(id: string, form: FormData) {
+  await requireSession();
   const db = await getDb();
   const stageId = String(form.get("stageId") || "") || null;
   let pipelineId: string | null = null;
@@ -201,6 +213,7 @@ async function saveFields(id: string, fields: FormField[]) {
 const FIELD_TYPES = ["text", "email", "tel", "textarea", "select"] as const;
 
 export async function addField(id: string, form: FormData) {
+  await requireSession();
   const f = await getForm(id);
   const label = String(form.get("label") || "New field");
   let key = slugify(label).replace(/-/g, "_") || "field";
@@ -210,6 +223,7 @@ export async function addField(id: string, form: FormData) {
 }
 
 export async function updateField(id: string, key: string, form: FormData) {
+  await requireSession();
   const f = await getForm(id);
   const type = String(form.get("type")) as FormField["type"];
   await saveFields(
@@ -232,6 +246,7 @@ export async function updateField(id: string, key: string, form: FormData) {
 }
 
 export async function moveField(id: string, key: string, dir: number) {
+  await requireSession();
   const f = await getForm(id);
   const fields = [...f.fields];
   const i = fields.findIndex((x) => x.key === key);
@@ -242,6 +257,7 @@ export async function moveField(id: string, key: string, dir: number) {
 }
 
 export async function deleteField(id: string, key: string) {
+  await requireSession();
   const f = await getForm(id);
   await saveFields(
     id,
@@ -250,6 +266,7 @@ export async function deleteField(id: string, key: string) {
 }
 
 export async function deleteForm(id: string) {
+  await requireSession();
   const db = await getDb();
   await db.delete(schema.forms).where(eq(schema.forms.id, id));
   redirect("/funnels/forms");
@@ -258,8 +275,10 @@ export async function deleteForm(id: string) {
 /* ───────────── Payments ───────────── */
 
 export async function requestPayment(form: FormData) {
+  await requireSession();
   const db = await getDb();
   const contactId = String(form.get("contactId") || "");
+  if (!contactId) throw new Error("Pick a contact");
   const [c] = await db.select().from(schema.contacts).where(eq(schema.contacts.id, contactId));
   if (!c) throw new Error("Pick a contact");
   const amountCents = Math.round(Number(form.get("amount") || 0) * 100);

@@ -6,8 +6,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   const isJson = req.headers.get("content-type")?.includes("application/json");
   let raw: Record<string, string> = {};
-  if (isJson) raw = Object.fromEntries(Object.entries((await req.json()) as Record<string, unknown>).map(([k, v]) => [k, String(v ?? "")]));
-  else for (const [k, v] of (await req.formData()).entries()) if (typeof v === "string") raw[k] = v;
+  try {
+    if (isJson) raw = Object.fromEntries(Object.entries(((await req.json()) ?? {}) as Record<string, unknown>).map(([k, v]) => [k, String(v ?? "")]));
+    else for (const [k, v] of (await req.formData()).entries()) if (typeof v === "string") raw[k] = v;
+  } catch {
+    return NextResponse.json({ ok: false, error: "Invalid submission" }, { status: 400 });
+  }
 
   const result = /^[0-9a-f-]{36}$/i.test(id) ? await submitForm(id, raw) : ({ ok: false, error: "Form not found" } as const);
   if (isJson) return NextResponse.json(result, { status: result.ok ? 200 : 400 });

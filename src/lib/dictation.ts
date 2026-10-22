@@ -7,7 +7,7 @@ export function applyDictionary(text: string, dict: { from: string; to: string }
   for (const { from, to } of dict) {
     if (!from) continue;
     const re = new RegExp(`\\b${from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+")}\\b`, "gi");
-    out = out.replace(re, to);
+    out = out.replace(re, () => to); // literal: "$" in a replacement must not be a pattern
   }
   return out;
 }

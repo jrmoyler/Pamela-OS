@@ -38,12 +38,18 @@ async function connect(): Promise<DB> {
 /** Lazily connects + migrates once per process. */
 export async function getDb(): Promise<DB> {
   if (holder.db) return holder.db;
-  holder.ready ??= connect().then(async (db) => {
-    holder.db = db;
-    const { ensureSeed } = await import("./seed");
-    await ensureSeed(db);
-    return db;
-  });
+  holder.ready ??= connect()
+    .then(async (db) => {
+      holder.db = db;
+      const { ensureSeed } = await import("./seed");
+      await ensureSeed(db);
+      return db;
+    })
+    .catch((e) => {
+      // Don't cache a failed connect/migrate forever — let the next call retry.
+      holder.ready = undefined;
+      throw e;
+    });
   return holder.ready;
 }
 

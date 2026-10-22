@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Mic, Square, Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui";
@@ -16,17 +16,32 @@ export function Recorder({ endpoint, label = "Record", extra }: { endpoint: stri
   const chunks = useRef<Blob[]>([]);
   const blob = useRef<Blob | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stream = useRef<MediaStream | null>(null);
+
+  // Release the mic and timer if the component goes away mid-recording.
+  useEffect(
+    () => () => {
+      if (timer.current) clearInterval(timer.current);
+      stream.current?.getTracks().forEach((t) => t.stop());
+    },
+    [],
+  );
+  useEffect(() => {
+    if (!url) return;
+    return () => URL.revokeObjectURL(url);
+  }, [url]);
 
   const start = async () => {
     setError(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const media = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.current = media;
       const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
-      const r = new MediaRecorder(stream, { mimeType: mime });
+      const r = new MediaRecorder(media, { mimeType: mime });
       chunks.current = [];
       r.ondataavailable = (e) => e.data.size && chunks.current.push(e.data);
       r.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
+        media.getTracks().forEach((t) => t.stop());
         blob.current = new Blob(chunks.current, { type: mime });
         setUrl(URL.createObjectURL(blob.current));
         setState("recorded");
@@ -53,9 +68,9 @@ export function Recorder({ endpoint, label = "Record", extra }: { endpoint: stri
     const ext = blob.current.type.includes("webm") ? "webm" : "m4a";
     form.set("file", new File([blob.current], `recording.${ext}`, { type: blob.current.type }));
     for (const [k, v] of Object.entries(extra ?? {})) form.set(k, v);
-    const res = await fetch(endpoint, { method: "POST", body: form });
-    if (!res.ok) {
-      setError((await res.json().catch(() => ({}))).error ?? "Upload failed");
+    const res = await fetch(endpoint, { method: "POST", body: form }).catch(() => null);
+    if (!res?.ok) {
+      setError((res && (await res.json().catch(() => ({}))).error) || "Upload failed — check your connection.");
       setState("recorded");
       return;
     }

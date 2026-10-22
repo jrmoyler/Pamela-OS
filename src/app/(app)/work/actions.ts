@@ -7,6 +7,7 @@ import { emit } from "@/lib/events";
 import { logActivity } from "@/lib/crm";
 import { getSetting } from "@/lib/settings";
 import { zonedToUtc } from "@/lib/time";
+import { requireSession } from "@/lib/auth";
 
 async function parseLocalDate(v: FormDataEntryValue | null) {
   const s = String(v ?? "");
@@ -17,6 +18,7 @@ async function parseLocalDate(v: FormDataEntryValue | null) {
 }
 
 export async function createTask(form: FormData) {
+  await requireSession();
   const db = await getDb();
   const title = String(form.get("title") ?? "").trim();
   if (!title) return;
@@ -42,6 +44,7 @@ export async function createTask(form: FormData) {
 }
 
 export async function setTaskStatus(taskId: string, status: "todo" | "doing" | "done") {
+  await requireSession();
   const db = await getDb();
   const [t] = await db
     .update(schema.tasks)
@@ -53,16 +56,21 @@ export async function setTaskStatus(taskId: string, status: "todo" | "doing" | "
     if (t.contactId) await logActivity({ type: "task", contactId: t.contactId, title: `Completed: ${t.title}` });
     // Keep boards in sync: completed tasks move to the Done column.
     await db.update(schema.boardItems).set({ columnKey: "done" }).where(eq(schema.boardItems.taskId, t.id));
+  } else if (t) {
+    // Reopening (e.g. unticking on Work/Today) takes the card out of Done too.
+    await db.update(schema.boardItems).set({ columnKey: status }).where(and(eq(schema.boardItems.taskId, t.id), eq(schema.boardItems.columnKey, "done")));
   }
   revalidatePath("/work");
   revalidatePath("/");
 }
 
 export async function toggleTask(taskId: string, done: boolean) {
+  await requireSession();
   await setTaskStatus(taskId, done ? "done" : "todo");
 }
 
 export async function updateTask(taskId: string, form: FormData) {
+  await requireSession();
   const db = await getDb();
   await db
     .update(schema.tasks)
@@ -78,13 +86,16 @@ export async function updateTask(taskId: string, form: FormData) {
 }
 
 export async function deleteTask(taskId: string) {
+  await requireSession();
   const db = await getDb();
   await db.delete(schema.tasks).where(eq(schema.tasks.id, taskId));
   revalidatePath("/work");
+  revalidatePath("/");
 }
 
 /** Drag & drop on a board. Moving into "done" completes the task; out of it reopens. */
 export async function moveBoardItem(itemId: string, columnKey: string, position: number) {
+  await requireSession();
   const db = await getDb();
   const [item] = await db.update(schema.boardItems).set({ columnKey, position }).where(eq(schema.boardItems.id, itemId)).returning();
   if (!item) return;
@@ -98,12 +109,14 @@ export async function moveBoardItem(itemId: string, columnKey: string, position:
 }
 
 export async function addTaskToBoard(boardId: string, taskId: string) {
+  await requireSession();
   const db = await getDb();
   await db.insert(schema.boardItems).values({ boardId, taskId, columnKey: "todo", position: 0 }).onConflictDoNothing();
   revalidatePath(`/work/${boardId}`);
 }
 
 export async function createBoard(form: FormData) {
+  await requireSession();
   const db = await getDb();
   const name = String(form.get("name") ?? "").trim();
   if (!name) return;
@@ -121,6 +134,7 @@ export async function createBoard(form: FormData) {
 }
 
 export async function removeFromBoard(itemId: string) {
+  await requireSession();
   const db = await getDb();
   await db.delete(schema.boardItems).where(and(eq(schema.boardItems.id, itemId)));
   revalidatePath("/work");

@@ -75,8 +75,8 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
         </Card>
       )}
       <form className="mb-4 flex flex-wrap gap-2">
-        <Input name="q" defaultValue={q} placeholder="Search name, email, phone, org…" className="max-w-xs" />
-        <select name="rel" defaultValue={rel ?? ""} className="h-10 rounded-lg border border-zinc-300 bg-white px-3 text-sm">
+        <Input name="q" defaultValue={q} aria-label="Search contacts" placeholder="Search name, email, phone, org…" className="max-w-xs" />
+        <select name="rel" aria-label="Relationship" defaultValue={rel ?? ""} className="h-10 rounded-lg border border-zinc-300 bg-white px-3 text-sm">
           <option value="">All relationships</option>
           {RELATIONSHIP_TYPES.map((r) => <option key={r}>{r}</option>)}
         </select>

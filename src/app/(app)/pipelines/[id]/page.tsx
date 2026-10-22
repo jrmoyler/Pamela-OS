@@ -10,6 +10,8 @@ import { moveDeal, createDeal, addStage } from "../actions";
 
 export default async function PipelinePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // Ids are uuids; anything else would make Postgres throw (500) instead of a 404.
+  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const db = await getDb();
   const [pipeline] = await db.select().from(schema.pipelines).where(eq(schema.pipelines.id, id));
   if (!pipeline) notFound();

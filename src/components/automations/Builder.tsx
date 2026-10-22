@@ -49,7 +49,9 @@ export function AutomationBuilder({
     if (p.type === "select")
       return (
         <Select value={val} onChange={(e) => set(e.target.value)}>
-          {p.options!.map((o) => <option key={o}>{o}</option>)}
+          {/* An unset param is saved as "" (the action's default) — show that instead of implying the first option. */}
+          {!p.options?.includes(val) && <option value={val}>Default</option>}
+          {(p.options ?? []).map((o) => <option key={o}>{o}</option>)}
         </Select>
       );
     if (p.type === "textarea") return <Textarea value={val} onChange={(e) => set(e.target.value)} className="min-h-16" />;
@@ -74,10 +76,10 @@ export function AutomationBuilder({
         <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">Only if (optional)</p>
         {conds.map((c, i) => (
           <div key={i} className="mb-2 flex gap-2">
-            <Select value={c.field} onChange={(e) => setConds(conds.map((x, j) => (j === i ? { ...x, field: e.target.value } : x)))}>
+            <Select aria-label="Condition field" value={c.field} onChange={(e) => setConds(conds.map((x, j) => (j === i ? { ...x, field: e.target.value } : x)))}>
               {[...fields.map((f) => `payload.${f}`), "contact.tags", "contact.relationshipTypes", "contact.email", "contact.phone"].map((f) => <option key={f}>{f}</option>)}
             </Select>
-            <Select value={c.op} onChange={(e) => setConds(conds.map((x, j) => (j === i ? { ...x, op: e.target.value } : x)))} className="w-36">
+            <Select aria-label="Condition operator" value={c.op} onChange={(e) => setConds(conds.map((x, j) => (j === i ? { ...x, op: e.target.value } : x)))} className="w-36">
               <option value="eq">equals</option>
               <option value="neq">not equal</option>
               <option value="contains">contains</option>
@@ -85,8 +87,8 @@ export function AutomationBuilder({
               <option value="gt">greater than</option>
               <option value="lt">less than</option>
             </Select>
-            <Input value={c.value ?? ""} onChange={(e) => setConds(conds.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} placeholder="value" />
-            <Button type="button" variant="ghost" size="icon" onClick={() => setConds(conds.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button>
+            <Input value={c.value ?? ""} onChange={(e) => setConds(conds.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} placeholder="value" aria-label="Condition value" />
+            <Button type="button" variant="ghost" size="icon" aria-label="Remove condition" onClick={() => setConds(conds.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button>
           </div>
         ))}
         <Button type="button" variant="soft" size="sm" onClick={() => setConds([...conds, { field: `payload.${fields[0] ?? "contactId"}`, op: "eq", value: "" }])}>
@@ -102,10 +104,10 @@ export function AutomationBuilder({
             <div key={i} className="mb-3 rounded-lg border border-zinc-200 p-3">
               <div className="mb-2 flex gap-2">
                 <span className="grid h-10 w-8 place-items-center text-sm font-bold text-brand">{i + 1}</span>
-                <Select value={a.type} onChange={(e) => setActs(acts.map((x, j) => (j === i ? { type: e.target.value, params: {} } : x)))}>
+                <Select aria-label={`Action ${i + 1}`} value={a.type} onChange={(e) => setActs(acts.map((x, j) => (j === i ? { type: e.target.value, params: {} } : x)))}>
                   {actions.map((x) => <option key={x.type} value={x.type}>{x.label}</option>)}
                 </Select>
-                <Button type="button" variant="ghost" size="icon" onClick={() => setActs(acts.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button>
+                <Button type="button" variant="ghost" size="icon" aria-label="Remove action" onClick={() => setActs(acts.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button>
               </div>
               <div className="grid gap-2 sm:grid-cols-2">
                 {meta?.params.map((p) => (

@@ -10,6 +10,8 @@ import { moveBoardItem, createTask, addTaskToBoard } from "../actions";
 
 export default async function BoardPage({ params }: { params: Promise<{ boardId: string }> }) {
   const { boardId } = await params;
+  // Ids are uuids; anything else would make Postgres throw (500) instead of a 404.
+  if (!/^[0-9a-f-]{36}$/i.test(boardId)) notFound();
   const db = await getDb();
   const [board] = await db.select().from(schema.boards).where(eq(schema.boards.id, boardId));
   if (!board) notFound();

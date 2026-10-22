@@ -8,6 +8,7 @@ import { testAutomation } from "@/lib/automations";
 import { runJob } from "@/lib/jobs";
 import { safeJson } from "@/lib/ai";
 import type { AutomationAction, AutomationCondition } from "@/lib/db/schema";
+import { requireSession } from "@/lib/auth";
 
 function parse(form: FormData) {
   return {
@@ -20,6 +21,7 @@ function parse(form: FormData) {
 }
 
 export async function saveAutomation(id: string | null, form: FormData) {
+  await requireSession();
   const db = await getDb();
   const data = parse(form);
   if (id) await db.update(schema.automations).set(data).where(eq(schema.automations.id, id));
@@ -28,18 +30,21 @@ export async function saveAutomation(id: string | null, form: FormData) {
 }
 
 export async function toggleAutomation(id: string, enabled: boolean) {
+  await requireSession();
   const db = await getDb();
   await db.update(schema.automations).set({ enabled }).where(eq(schema.automations.id, id));
   revalidatePath("/automations");
 }
 
 export async function deleteAutomation(id: string) {
+  await requireSession();
   const db = await getDb();
   await db.delete(schema.automations).where(eq(schema.automations.id, id));
   revalidatePath("/automations");
 }
 
 export async function runTest(id: string, form: FormData) {
+  await requireSession();
   const payload = safeJson<Record<string, unknown>>(String(form.get("payload") || "{}")) ?? {};
   const contactId = String(form.get("contactId") || "");
   if (contactId) payload.contactId = contactId;
@@ -48,6 +53,7 @@ export async function runTest(id: string, form: FormData) {
 }
 
 export async function retryJob(id: string) {
+  await requireSession();
   const db = await getDb();
   const [job] = await db.update(schema.jobs).set({ status: "running", attempts: 0, lockedAt: new Date(), error: null }).where(eq(schema.jobs.id, id)).returning();
   if (job) await runJob(job);

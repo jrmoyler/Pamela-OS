@@ -72,7 +72,7 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
                 <Card key={a.id} className="p-4">
                   <div className="flex flex-wrap items-center gap-3">
                     <form action={toggleAutomation.bind(null, a.id, !a.enabled)}>
-                      <button className={`h-6 w-11 rounded-full p-0.5 transition ${a.enabled ? "bg-brand" : "bg-zinc-300"}`} title={a.enabled ? "On" : "Off"}>
+                      <button className={`h-6 w-11 rounded-full p-0.5 transition ${a.enabled ? "bg-brand" : "bg-zinc-300"}`} title={a.enabled ? "On" : "Off"} aria-label={`${a.name}: ${a.enabled ? "on, turn off" : "off, turn on"}`}>
                         <span className={`block h-5 w-5 rounded-full bg-white transition ${a.enabled ? "translate-x-5" : ""}`} />
                       </button>
                     </form>
@@ -85,17 +85,17 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
                       {a.description && <p className="text-xs text-zinc-400">{a.description}</p>}
                     </div>
                     {last && <Badge tone={statusTone(last.status)}>last: {last.status} {timeAgo(last.startedAt)}</Badge>}
-                    <Link href={`/automations?edit=${a.id}`}><Button variant="ghost" size="icon"><Pencil className="h-4 w-4" /></Button></Link>
-                    <form action={deleteAutomation.bind(null, a.id)}><Button variant="ghost" size="icon"><Trash2 className="h-4 w-4" /></Button></form>
+                    <Link href={`/automations?edit=${a.id}`}><Button variant="ghost" size="icon" aria-label={`Edit ${a.name}`}><Pencil className="h-4 w-4" /></Button></Link>
+                    <form action={deleteAutomation.bind(null, a.id)}><Button variant="ghost" size="icon" aria-label={`Delete ${a.name}`}><Trash2 className="h-4 w-4" /></Button></form>
                   </div>
                   <details className="mt-3">
                     <summary className="cursor-pointer text-xs text-brand">Test run</summary>
                     <form action={runTest.bind(null, a.id)} className="mt-2 flex flex-wrap gap-2">
-                      <Select name="contactId" className="max-w-56">
+                      <Select name="contactId" className="max-w-56" aria-label="Test contact">
                         <option value="">No contact</option>
                         {contacts.map((c) => <option key={c.id} value={c.id}>{contactName(c)}</option>)}
                       </Select>
-                      <Input name="payload" placeholder='Event payload JSON, e.g. {"urgency":"urgent"}' className="flex-1" />
+                      <Input name="payload" aria-label="Event payload JSON" placeholder='Event payload JSON, e.g. {"urgency":"urgent"}' className="flex-1" />
                       <Button size="md" variant="outline"><Play className="h-4 w-4" /> Run now</Button>
                     </form>
                   </details>

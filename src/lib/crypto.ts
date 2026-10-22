@@ -1,7 +1,8 @@
 import crypto from "node:crypto";
+import { authSecret } from "./session";
 
 function key(): Buffer {
-  const secret = process.env.ENCRYPTION_KEY || process.env.AUTH_SECRET || "pamela-os-dev-only-secret-change-me";
+  const secret = process.env.ENCRYPTION_KEY || authSecret();
   return crypto.createHash("sha256").update(secret).digest();
 }
 
@@ -30,10 +31,18 @@ export function verifyPassword(password: string, stored: string): boolean {
   const [scheme, saltHex, hashHex] = stored.split("$");
   if (scheme !== "scrypt" || !saltHex || !hashHex) return false;
   const expected = Buffer.from(hashHex, "hex");
+  if (expected.length === 0) return false; // malformed hash would otherwise compare two empty buffers as equal
   const actual = crypto.scryptSync(password, Buffer.from(saltHex, "hex"), expected.length);
   return crypto.timingSafeEqual(expected, actual);
 }
 
 export function hmacHex(secret: string, data: string, algo: "sha1" | "sha256" = "sha256") {
   return crypto.createHmac(algo, secret).update(data).digest("hex");
+}
+
+/** Constant-time string comparison (for signatures and tokens). */
+export function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ab.length === bb.length && crypto.timingSafeEqual(ab, bb);
 }

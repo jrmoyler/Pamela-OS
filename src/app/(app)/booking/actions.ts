@@ -8,6 +8,7 @@ import type { WeeklyHours } from "@/lib/db/schema";
 import { createBooking, cancelBooking, BookingError } from "@/lib/modules/booking";
 import { getSetting } from "@/lib/settings";
 import { zonedToUtc } from "@/lib/time";
+import { requireSession } from "@/lib/auth";
 
 const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 
@@ -30,6 +31,7 @@ const slugify = (s: string) =>
     .slice(0, 60) || "booking";
 
 export async function saveBookingType(id: string | null, form: FormData) {
+  await requireSession();
   const db = await getDb();
   const values = {
     name: String(form.get("name") || "Appointment"),
@@ -53,17 +55,20 @@ export async function saveBookingType(id: string | null, form: FormData) {
 }
 
 export async function deleteBookingType(id: string) {
+  await requireSession();
   const db = await getDb();
   await db.delete(schema.bookingTypes).where(eq(schema.bookingTypes.id, id));
   revalidatePath("/booking");
 }
 
 export async function cancelBookingAction(id: string) {
+  await requireSession();
   await cancelBooking(id, "Cancelled by Pamela");
   revalidatePath("/booking");
 }
 
 export async function manualBooking(form: FormData) {
+  await requireSession();
   const tz = await getSetting("timezone");
   const date = String(form.get("date") || "");
   const time = String(form.get("time") || "");

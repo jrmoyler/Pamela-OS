@@ -39,10 +39,19 @@ export async function claimJob(types?: string[]) {
     .limit(10);
   for (const c of candidates) {
     if (types && !types.includes(c.type)) continue;
+    if (c.status === "running" && c.attempts >= 3) {
+      // A job that keeps taking its worker down (crash, OOM, timeout) is never finished; stop retrying it.
+      await db
+        .update(schema.jobs)
+        .set({ status: "failed", lockedAt: null, error: c.error ?? "Stopped after 3 attempts: the worker never finished this job." })
+        .where(and(eq(schema.jobs.id, c.id), eq(schema.jobs.status, "running")));
+      continue;
+    }
     const [claimed] = await db
       .update(schema.jobs)
       .set({ status: "running", lockedAt: new Date(), attempts: c.attempts + 1 })
-      .where(and(eq(schema.jobs.id, c.id), eq(schema.jobs.status, c.status)))
+      // Also match the lock we saw, so two workers can't both reclaim the same stale job.
+      .where(and(eq(schema.jobs.id, c.id), eq(schema.jobs.status, c.status), c.lockedAt ? eq(schema.jobs.lockedAt, c.lockedAt) : isNull(schema.jobs.lockedAt)))
       .returning();
     if (claimed) return claimed;
   }

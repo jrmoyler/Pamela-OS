@@ -8,6 +8,7 @@ import { findOrCreateContact, logActivity, normalizePhone, contactName } from "@
 import { emit } from "@/lib/events";
 import { createApproval } from "@/lib/approvals";
 import { draftInHerVoice } from "@/lib/rj/voice";
+import { requireSession } from "@/lib/auth";
 
 const list = (v: FormDataEntryValue | null) =>
   String(v ?? "")
@@ -16,6 +17,7 @@ const list = (v: FormDataEntryValue | null) =>
     .filter(Boolean);
 
 export async function createContact(form: FormData) {
+  await requireSession();
   const { contact, created } = await findOrCreateContact({
     firstName: String(form.get("firstName") ?? ""),
     lastName: String(form.get("lastName") ?? ""),
@@ -34,6 +36,7 @@ export async function createContact(form: FormData) {
 }
 
 export async function updateContact(id: string, form: FormData) {
+  await requireSession();
   const db = await getDb();
   await db
     .update(schema.contacts)
@@ -55,6 +58,7 @@ export async function updateContact(id: string, form: FormData) {
 }
 
 export async function addNote(id: string, form: FormData) {
+  await requireSession();
   const body = String(form.get("body") ?? "").trim();
   if (!body) return;
   const type = String(form.get("type") || "note");
@@ -64,6 +68,7 @@ export async function addNote(id: string, form: FormData) {
 }
 
 export async function deleteContact(id: string) {
+  await requireSession();
   const db = await getDb();
   await db.delete(schema.contacts).where(eq(schema.contacts.id, id));
   redirect("/contacts");
@@ -71,6 +76,7 @@ export async function deleteContact(id: string) {
 
 /** RJ drafts in Pamela's voice → lands in Approvals, never sent directly. */
 export async function draftMessage(id: string, form: FormData) {
+  await requireSession();
   const db = await getDb();
   const [c] = await db.select().from(schema.contacts).where(eq(schema.contacts.id, id));
   if (!c) return;
@@ -88,11 +94,14 @@ export async function draftMessage(id: string, form: FormData) {
 }
 
 export async function addDealForContact(id: string, form: FormData) {
+  await requireSession();
   const db = await getDb();
-  const pipelineId = String(form.get("pipelineId"));
+  const pipelineId = String(form.get("pipelineId") || "");
+  if (!pipelineId) return; // no pipelines yet — an empty id would make the uuid query throw
   const [stage] = await db.select().from(schema.pipelineStages).where(eq(schema.pipelineStages.pipelineId, pipelineId)).orderBy(schema.pipelineStages.position).limit(1);
   if (!stage) return;
   const [c] = await db.select().from(schema.contacts).where(eq(schema.contacts.id, id));
+  if (!c) return;
   const [deal] = await db
     .insert(schema.deals)
     .values({ pipelineId, stageId: stage.id, contactId: id, title: String(form.get("title") || contactName(c)), valueCents: Math.round(Number(form.get("value") || 0) * 100) })

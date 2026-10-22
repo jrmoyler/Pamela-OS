@@ -11,6 +11,7 @@ import { createApproval } from "@/lib/approvals";
 import { aiText } from "@/lib/ai";
 import { herVoiceSystem } from "@/lib/rj/voice";
 import { RELEASE_STEPS } from "@/lib/modules/music";
+import { requireSession } from "@/lib/auth";
 
 async function getSong(id: string) {
   const db = await getDb();
@@ -20,6 +21,7 @@ async function getSong(id: string) {
 }
 
 export async function createSong(form: FormData) {
+  await requireSession();
   const db = await getDb();
   const [s] = await db
     .insert(schema.songs)
@@ -29,6 +31,7 @@ export async function createSong(form: FormData) {
 }
 
 export async function saveSong(id: string, form: FormData) {
+  await requireSession();
   const db = await getDb();
   await db
     .update(schema.songs)
@@ -43,6 +46,7 @@ export async function saveSong(id: string, form: FormData) {
 }
 
 export async function writeLyrics(id: string, form: FormData) {
+  await requireSession();
   await saveSong(id, form);
   const s = await getSong(id);
   const r = await aiText(
@@ -58,6 +62,7 @@ export async function writeLyrics(id: string, form: FormData) {
 }
 
 export async function generateSong(id: string, form: FormData) {
+  await requireSession();
   await saveSong(id, form);
   const db = await getDb();
   await db.update(schema.songs).set({ status: "generating", providerId: null }).where(eq(schema.songs.id, id));
@@ -67,6 +72,7 @@ export async function generateSong(id: string, form: FormData) {
 }
 
 export async function uploadAudio(id: string, form: FormData) {
+  await requireSession();
   const file = form.get("audio");
   if (!(file instanceof File) || !file.size || !file.type.startsWith("audio/")) throw new Error("Choose an audio file.");
   const stored = await putFile(Buffer.from(await file.arrayBuffer()), file.name, file.type);
@@ -80,12 +86,14 @@ export async function uploadAudio(id: string, form: FormData) {
 }
 
 export async function setStatus(id: string, status: "idea" | "draft" | "approved") {
+  await requireSession();
   const db = await getDb();
   await db.update(schema.songs).set({ status }).where(eq(schema.songs.id, id));
   revalidatePath(`/studio/music/${id}`);
 }
 
 export async function saveChecklist(id: string, form: FormData) {
+  await requireSession();
   const db = await getDb();
   const checklist = Object.fromEntries(RELEASE_STEPS.map((s) => [s.key, form.get(s.key) === "on"]));
   const cover = String(form.get("coverDesignId") || "") || null;
@@ -98,6 +106,7 @@ export async function saveChecklist(id: string, form: FormData) {
 }
 
 export async function requestRelease(id: string, form: FormData) {
+  await requireSession();
   const s = await getSong(id);
   if (!s.audioFileId) throw new Error("Add the audio before releasing.");
   const platforms = form.getAll("platforms").map(String).filter((p): p is "instagram" | "facebook" => p === "instagram" || p === "facebook");
@@ -114,6 +123,7 @@ export async function requestRelease(id: string, form: FormData) {
 }
 
 export async function deleteSong(id: string) {
+  await requireSession();
   const db = await getDb();
   await db.delete(schema.songs).where(eq(schema.songs.id, id));
   redirect("/studio/music");
