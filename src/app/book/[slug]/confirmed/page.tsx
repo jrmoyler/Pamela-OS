@@ -3,12 +3,10 @@ import { eq } from "drizzle-orm";
 import { CheckCircle2 } from "lucide-react";
 import { getDb, schema } from "@/lib/db";
 import { getSetting } from "@/lib/settings";
-import { formatSlot } from "@/lib/time";
+import { formatSlot, tzLabel } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
-/** e.g. "Pacific Time" — the booking time zone is a setting, so never hard-code it. */
-const tzLabel = (tz: string) => new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "longGeneric" }).formatToParts(new Date()).find((p) => p.type === "timeZoneName")?.value ?? tz;
 
 export default async function Confirmed({ searchParams }: { searchParams: Promise<{ b?: string }> }) {
   const { b } = await searchParams;

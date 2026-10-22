@@ -4,12 +4,11 @@ import { Clock } from "lucide-react";
 import { getDb, schema } from "@/lib/db";
 import { money } from "@/lib/utils";
 import { getSetting } from "@/lib/settings";
+import { tzLabel } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Book a time with Pamela" };
 
-/** e.g. "Pacific Time" — the booking time zone is a setting, so never hard-code it. */
-const tzLabel = (tz: string) => new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "longGeneric" }).formatToParts(new Date()).find((p) => p.type === "timeZoneName")?.value ?? tz;
 
 export default async function BookIndex() {
   const db = await getDb();

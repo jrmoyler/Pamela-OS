@@ -2,14 +2,12 @@ import { notFound } from "next/navigation";
 import { Clock, MapPin } from "lucide-react";
 import { getBookingType, getSlots } from "@/lib/modules/booking";
 import { getSetting } from "@/lib/settings";
-import { formatInTz } from "@/lib/time";
+import { formatInTz, tzLabel } from "@/lib/time";
 import { money } from "@/lib/utils";
 import { bookSlot } from "../actions";
 
 export const dynamic = "force-dynamic";
 
-/** e.g. "Pacific Time" — the booking time zone is a setting, so never hard-code it. */
-const tzLabel = (tz: string) => new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "longGeneric" }).formatToParts(new Date()).find((p) => p.type === "timeZoneName")?.value ?? tz;
 
 export default async function BookType({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ error?: string }> }) {
   const { slug } = await params;

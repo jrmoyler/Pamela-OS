@@ -123,7 +123,16 @@ export async function rejectApproval(id: string, reason?: string) {
     .set({ status: "rejected", decidedAt: new Date(), error: reason ?? null })
     .where(and(eq(schema.approvals.id, id), eq(schema.approvals.status, "pending")))
     .returning();
-  if (row) await emit("approval.rejected", { approvalId: id, kind: row.kind }, "approvals");
+  if (row) {
+    // Hand the item back to her as an editable draft instead of leaving it stuck "awaiting approval".
+    const table = (
+      { campaign: schema.campaigns, social_post: schema.socialPosts, voice_draft: schema.voiceDrafts, design: schema.designs } as const
+    )[row.subjectType as "campaign" | "social_post" | "voice_draft" | "design"];
+    if (table && row.subjectId) {
+      await db.update(table).set({ status: "draft" }).where(and(eq(table.id, row.subjectId), eq(table.status, "awaiting_approval")));
+    }
+    await emit("approval.rejected", { approvalId: id, kind: row.kind }, "approvals");
+  }
   return row;
 }
 
