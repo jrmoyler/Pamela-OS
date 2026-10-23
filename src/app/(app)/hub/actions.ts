@@ -128,7 +128,7 @@ export async function inboxToContact(id: string, form: FormData) {
   const found = (await runTool("search_contacts", { query: name })) as { id: string }[] | { error: string };
   if (!Array.isArray(found) || !found.length) return;
   const contactId = found[0].id;
-  const body = [item.body, item.url, item.fileId ? `File: ${appUrl()}/api/files/${item.fileId}` : null].filter(Boolean).join("\n\n");
+  const body = [item.body, item.url, item.fileId ? `File: ${appUrl()}/library/${item.fileId}` : null].filter(Boolean).join("\n\n");
   await logActivity({ type: "note", contactId, title: `${SOURCE_LABELS[item.source] ?? item.source}: ${item.title}`, body: body || null, subjectType: "inbox_item", subjectId: item.id });
   await db.update(schema.inboxItems).set({ contactId, status: "filed" }).where(eq(schema.inboxItems.id, id));
   revalidatePath("/hub");

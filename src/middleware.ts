@@ -16,6 +16,7 @@ const PUBLIC = [
   // Agent doors: authenticated by agent keys inside the route, not the session cookie.
   /^\/api\/mcp(\/|$)/,
   /^\/api\/inbox$/,
+  /^\/api\/tools(\/|$)/,
   /^\/manifest\.webmanifest$/,
   /^\/sw\.js$/,
   /^\/offline\.html$/,

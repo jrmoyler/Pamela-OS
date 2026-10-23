@@ -140,7 +140,7 @@ export default async function HubPage({ searchParams }: { searchParams: Promise<
                       </div>
                       {i.body && <p className="line-clamp-4 whitespace-pre-wrap text-sm text-zinc-600">{i.body}</p>}
                       <div className="flex flex-wrap items-center gap-2 text-sm">
-                        {f && <a href={`/api/files/${f.id}`} target="_blank" className="text-brand underline">Open {f.name}</a>}
+                        {f && <Link href={`/library/${f.id}`} className="text-brand underline">Open {f.name}</Link>}
                         {i.url && <a href={i.url} target="_blank" rel="noreferrer" className="break-all text-brand underline">{i.url}</a>}
                         {c && <Link href={`/contacts/${c.id}`} className="text-brand underline">{contactName(c)}</Link>}
                       </div>
@@ -210,7 +210,7 @@ export default async function HubPage({ searchParams }: { searchParams: Promise<
                     {t.fileIds.length > 0 && (
                       <div className="flex flex-wrap gap-2 text-sm">
                         {t.fileIds.map((id) => (
-                          <a key={id} href={`/api/files/${id}`} target="_blank" className="text-brand underline">{fileName.get(id) ?? "file"}</a>
+                          <Link key={id} href={`/library/${id}`} className="text-brand underline">{fileName.get(id) ?? "file"}</Link>
                         ))}
                       </div>
                     )}

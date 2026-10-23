@@ -126,7 +126,7 @@ export default async function LibraryPage({
                 {files.map((f) => (
                   <li key={f.id} className="px-4 py-2">
                     <div className="flex flex-wrap items-center gap-2 text-sm">
-                      <a href={`/api/files/${f.id}`} target="_blank" className="min-w-0 truncate font-medium text-brand-ink hover:text-brand">{f.name}</a>
+                      <Link href={`/library/${f.id}`} className="min-w-0 truncate font-medium text-brand-ink hover:text-brand">{f.name}</Link>
                       <Badge>{f.kind}</Badge>
                       <Badge tone="brand">{SOURCE_LABELS[f.source] ?? f.source}</Badge>
                       {f.tags.map((t) => <Badge key={t} tone="blue">{t}</Badge>)}

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { putFile } from "@/lib/storage";
+import { mimeFromName } from "@/lib/hub/sources";
 
 export const maxDuration = 300;
 
@@ -11,6 +12,6 @@ export async function POST(req: Request) {
   const description = String(form.get("description") ?? "").trim() || null;
   const tags = String(form.get("tags") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   const saved = [];
-  for (const f of files) saved.push(await putFile(Buffer.from(await f.arrayBuffer()), f.name, f.type || "application/octet-stream", { source: "upload", description, tags }));
+  for (const f of files) saved.push(await putFile(Buffer.from(await f.arrayBuffer()), f.name, f.type && f.type !== "application/octet-stream" ? f.type : mimeFromName(f.name), { source: "upload", description, tags }));
   return NextResponse.json({ ids: saved.map((s) => s.id) });
 }
