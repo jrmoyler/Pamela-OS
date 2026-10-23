@@ -5,7 +5,7 @@
   "description": "Pamela OS — the A Cup of Compassion operating system. One installable PWA for CRM, meetings, receptionist, funnels, campaigns, studios and the Hermes operator layer.",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "tsx scripts/check-env.ts && next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",

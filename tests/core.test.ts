@@ -178,3 +178,17 @@ test("MCP tools are limited by the key's scopes", async () => {
   const hermes = toolsFor(key("hermes", ["computer"])).map((t) => t.name);
   assert.ok(hermes.includes("next_computer_task") && hermes.includes("finish_computer_task"));
 });
+
+test("database failures are explained in plain words", async () => {
+  const { diagnoseDbError } = await import("../src/lib/db/diagnose");
+  // drizzle wraps the driver error, so the real code sits on .cause
+  const wrapped = (cause: object) => Object.assign(new Error('Failed query: CREATE SCHEMA IF NOT EXISTS "drizzle"'), { cause });
+  assert.equal(diagnoseDbError(wrapped({ code: "28P01", message: 'password authentication failed for user "postgres"' })).problem, "bad_password");
+  assert.equal(diagnoseDbError(wrapped({ code: "XX000", message: "Tenant or user not found" })).problem, "unknown_user");
+  assert.equal(diagnoseDbError(wrapped({ code: "3D000", message: "database does not exist" })).problem, "missing_database");
+  assert.equal(diagnoseDbError({ code: "ENOTFOUND" }).problem, "host_not_found");
+  const down = diagnoseDbError({ code: "ECONNREFUSED" });
+  assert.equal(down.problem, "unreachable");
+  assert.equal(down.config, false);
+  assert.ok(diagnoseDbError(wrapped({ code: "28P01" })).config);
+});

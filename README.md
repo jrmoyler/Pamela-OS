@@ -112,6 +112,12 @@ npm run build          # production build
 4. **Webhooks.** Paste the URLs from **Settings → Webhook URLs** into Twilio (voice + messaging on (323) 943-ACUP), Meta (Instagram/Facebook page subscriptions: `comments`, `messages`) and Stripe (`checkout.session.completed`).
 5. **Install.** Open the app on her laptop and phone, then click **Install app** (or "Add to Home Screen"). Nothing else runs on her devices, and there is no Docker.
 
+### If the app can't reach its database
+
+- **Deploys check first.** On Vercel production builds, `scripts/check-env.ts` runs before `next build` and connects with `DATABASE_URL`. A wrong password, user or database name, or a missing `AUTH_SECRET`/`DATABASE_URL`, fails the build with the exact fix. The last working deployment stays live. A database that is only briefly unreachable just logs a warning. Set `SKIP_ENV_CHECK=1` to bypass the check in an emergency.
+- **The app explains itself.** If the database becomes unreachable later (for example, its password was rotated or a Supabase project was paused), pages show what's wrong and which setting to change instead of a bare "Application error". `GET /api/health` returns the same diagnosis as JSON (it never includes the URL or password) and suits an uptime monitor.
+- Changing an environment variable in Vercel only takes effect after a **redeploy**.
+
 ### Alternative: single VPS
 
 Run `npm run build` and enable `deploy/systemd/pamela-web.service` + `pamela-worker.service` behind Caddy (`deploy/Caddyfile`). Point `DATABASE_URL` to Supabase or a local Postgres. If `DATABASE_URL` is omitted, the embedded database is used (single process only).
