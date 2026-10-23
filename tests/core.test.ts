@@ -216,3 +216,29 @@ test("pasted DATABASE_URL mistakes are cleaned up", async () => {
   }
   assert.equal(decodeURIComponent(new URL(n(`postgresql://postgres.abc:Pa#s/s?w@rd@${host}`)).password), "Pa#s/s?w@rd");
 });
+
+test("public links never point at localhost on a deployed app", async () => {
+  const { appUrl, isLocalUrl } = await import("../src/lib/outbound");
+  const keys = ["APP_URL", "NEXT_PUBLIC_APP_URL", "VERCEL_PROJECT_PRODUCTION_URL", "VERCEL_URL"] as const;
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  const set = (env: Partial<Record<(typeof keys)[number], string>>) => {
+    for (const k of keys) delete process.env[k];
+    Object.assign(process.env, env);
+  };
+  try {
+    set({ VERCEL_PROJECT_PRODUCTION_URL: "pamela-os-5ila.vercel.app" });
+    assert.equal(appUrl(), "https://pamela-os-5ila.vercel.app");
+    set({ APP_URL: "http://localhost:3000", VERCEL_PROJECT_PRODUCTION_URL: "pamela-os-5ila.vercel.app" });
+    assert.equal(appUrl(), "https://pamela-os-5ila.vercel.app");
+    set({ APP_URL: "https://os.acupofcompassion.com/", VERCEL_PROJECT_PRODUCTION_URL: "pamela-os-5ila.vercel.app" });
+    assert.equal(appUrl(), "https://os.acupofcompassion.com");
+    set({ APP_URL: "os.acupofcompassion.com" });
+    assert.equal(appUrl(), "https://os.acupofcompassion.com");
+    set({});
+    assert.equal(appUrl(), "http://localhost:3000");
+    for (const u of ["http://localhost:3000", "localhost", "http://127.0.0.1:8080/x", "http://0.0.0.0", "http://[::1]:3000"]) assert.ok(isLocalUrl(u), u);
+    for (const u of ["https://pamela-os-5ila.vercel.app", "https://localhost.example.com", "https://os.acupofcompassion.com"]) assert.ok(!isLocalUrl(u), u);
+  } finally {
+    set(Object.fromEntries(Object.entries(saved).filter(([, v]) => v !== undefined)) as Record<string, string>);
+  }
+});

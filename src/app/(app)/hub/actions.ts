@@ -8,7 +8,7 @@ import { complete, PROVIDER_LABELS, type ProviderId } from "@/lib/ai";
 import { herVoiceSystem } from "@/lib/rj/voice";
 import { runTool } from "@/lib/rj/tools";
 import { setSetting } from "@/lib/settings";
-import { appUrl } from "@/lib/outbound";
+import { appUrl, isLocalUrl, requestAppUrl } from "@/lib/outbound";
 import { AGENT_CLIENTS, createAgentKey, revokeAgentKey, type AgentClient, type Scope } from "@/lib/hub/keys";
 import { addInboxItem, setInboxStatus, SOURCE_LABELS } from "@/lib/hub/inbox";
 import { logActivity } from "@/lib/crm";
@@ -52,8 +52,16 @@ export async function createKey(name: string, client: string, scopes: string[]) 
   if (!s.length) return { error: "Pick at least one permission." };
   const { key, token } = await createAgentKey(name, c, s);
   revalidatePath("/hub/connect");
-  const base = appUrl();
-  return { id: key.id, token, mcpUrl: `${base}/api/mcp`, mcpUrlWithKey: `${base}/api/mcp/k/${token}`, inboxUrl: `${base}/api/inbox` };
+  const base = await requestAppUrl();
+  return {
+    id: key.id,
+    token,
+    mcpUrl: `${base}/api/mcp`,
+    mcpUrlWithKey: `${base}/api/mcp/k/${token}`,
+    inboxUrl: `${base}/api/inbox`,
+    // Claude, ChatGPT and Meta run in the cloud and can't reach this machine's localhost.
+    localOnly: isLocalUrl(base),
+  };
 }
 
 export async function revokeKey(id: string) {

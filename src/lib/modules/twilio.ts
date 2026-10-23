@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { getSecret } from "../settings";
+import { appUrl } from "../outbound";
 
 /** Parses a Twilio webhook and validates X-Twilio-Signature when an auth token is configured. */
 export async function readTwilio(req: Request): Promise<{ ok: boolean; params: Record<string, string> }> {
@@ -9,9 +10,10 @@ export async function readTwilio(req: Request): Promise<{ ok: boolean; params: R
   if (!token) return { ok: true, params };
   const sig = req.headers.get("x-twilio-signature") ?? "";
   const reqUrl = new URL(req.url);
-  // Behind proxies the public URL differs from req.url; APP_URL is the source of truth.
-  const base = process.env.APP_URL?.replace(/\/$/, "");
-  const candidates = [req.url, base ? base + reqUrl.pathname + reqUrl.search : null].filter(Boolean) as string[];
+  // Behind proxies the public URL differs from req.url, so also try the public base and the forwarded host.
+  const host = req.headers.get("x-forwarded-host");
+  const bases = [appUrl(), host ? `${req.headers.get("x-forwarded-proto") ?? "https"}://${host}` : null];
+  const candidates = [req.url, ...bases.filter(Boolean).map((b) => b + reqUrl.pathname + reqUrl.search)];
   const ok = candidates.some((url) => {
     const data = url + Object.keys(params).sort().map((k) => k + params[k]).join("");
     const expected = crypto.createHmac("sha1", token).update(data).digest("base64");

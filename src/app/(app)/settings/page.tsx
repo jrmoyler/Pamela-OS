@@ -1,5 +1,5 @@
 import { getAllSettings, secretStatus, SECRET_DEFS } from "@/lib/settings";
-import { appUrl } from "@/lib/outbound";
+import { requestAppUrl } from "@/lib/outbound";
 import { BRAND } from "@/lib/brand";
 import { PageHeader, Card, CardHeader, Button, Input, Textarea, Field, Badge } from "@/components/ui";
 import { saveSecrets, setDeliveryMode, saveBrand, saveSchedule, saveDictionary, saveRouting, changePassword, clearSecret } from "./actions";
@@ -12,7 +12,7 @@ export default async function SettingsPage() {
   const s = await getAllSettings();
   const status = await secretStatus();
   const groups = [...new Set(SECRET_DEFS.map((d) => d.group))];
-  const base = appUrl();
+  const base = await requestAppUrl();
   const webhooks = [
     ["Twilio voice (A call comes in)", `${base}/api/webhooks/twilio/voice`],
     ["Twilio messaging (A message comes in)", `${base}/api/webhooks/twilio/sms`],

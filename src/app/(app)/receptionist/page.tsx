@@ -1,11 +1,10 @@
 import Link from "next/link";
-import { headers } from "next/headers";
 import { desc, eq } from "drizzle-orm";
 import { PhoneCall } from "lucide-react";
 import { getDb, schema } from "@/lib/db";
 import { getSetting, getSecret } from "@/lib/settings";
 import { contactName } from "@/lib/crm";
-import { appUrl } from "@/lib/outbound";
+import { requestAppUrl } from "@/lib/outbound";
 import { BRAND } from "@/lib/brand";
 import { PageHeader, Card, CardHeader, Badge, Button, Input, Textarea, Field, EmptyState, statusTone } from "@/components/ui";
 import { fmtDate } from "@/lib/utils";
@@ -26,9 +25,7 @@ export default async function ReceptionistPage({ searchParams }: { searchParams:
     .leftJoin(schema.contacts, eq(schema.calls.contactId, schema.contacts.id))
     .orderBy(desc(schema.calls.startedAt))
     .limit(100);
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  const base = process.env.APP_URL ? appUrl() : host ? `${h.get("x-forwarded-proto") ?? "https"}://${host}` : appUrl();
+  const base = await requestAppUrl();
 
   return (
     <>

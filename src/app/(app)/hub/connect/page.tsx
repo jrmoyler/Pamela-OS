@@ -2,7 +2,7 @@ import Link from "next/link";
 import { desc } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
-import { appUrl } from "@/lib/outbound";
+import { requestAppUrl } from "@/lib/outbound";
 import { CLIENT_LABELS, SCOPE_LABELS, type AgentClient, type Scope } from "@/lib/hub/keys";
 import { PageHeader, Card, CardHeader, Badge, Button } from "@/components/ui";
 import { KeyMaker } from "@/components/hub/KeyMaker";
@@ -15,7 +15,7 @@ export default async function ConnectPage() {
   await requireSession();
   const db = await getDb();
   const keys = await db.select().from(schema.agentKeys).orderBy(desc(schema.agentKeys.createdAt));
-  const base = appUrl();
+  const base = await requestAppUrl();
 
   return (
     <>

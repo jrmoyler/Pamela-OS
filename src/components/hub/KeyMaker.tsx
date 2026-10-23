@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Copy, Check, KeyRound } from "lucide-react";
 import { Button, Field, Input, Select } from "@/components/ui";
 
-type Made = { token: string; mcpUrl: string; mcpUrlWithKey: string; inboxUrl: string; client: string };
+type Made = { token: string; mcpUrl: string; mcpUrlWithKey: string; inboxUrl: string; localOnly?: boolean; client: string };
 
 const DEFAULT_SCOPES: Record<string, string[]> = {
   claude: ["read", "write"],
@@ -38,7 +38,18 @@ function CopyBox({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** Cloud agents (Claude, ChatGPT, Meta) can't reach localhost, so say so instead of handing out a dead link. */
+function LocalWarning() {
+  return (
+    <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-800">
+      This address only works on this computer. Claude, ChatGPT and Meta connect from the internet, so open Pamela OS at its public address
+      (for example https://pamela-os-5ila.vercel.app) and make the key there, or set <code>APP_URL</code> to that address.
+    </p>
+  );
+}
+
 function Setup({ m }: { m: Made }) {
+  if (m.localOnly && m.client !== "hermes") return <LocalWarning />;
   const hermesYaml = `mcp_servers:\n  pamela_os:\n    url: "${m.mcpUrl}"\n    headers:\n      Authorization: "Bearer ${m.token}"`;
   const curl = `curl -X POST ${m.inboxUrl} \\\n  -H "Authorization: Bearer ${m.token}" \\\n  -F file=@report.pdf -F description="From Meta Muse"`;
   switch (m.client) {
