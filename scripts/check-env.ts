@@ -3,6 +3,7 @@
 // leaves the last good deployment live, so Pamela never lands on a crash page because of a typo.
 // Set SKIP_ENV_CHECK=1 to bypass in an emergency.
 import { diagnoseDbError } from "../src/lib/db/diagnose";
+import { normalizeDatabaseUrl } from "../src/lib/db/url";
 
 const onVercel = process.env.VERCEL === "1";
 const production = process.env.VERCEL_ENV === "production";
@@ -21,7 +22,7 @@ async function main() {
     problems.push("DATABASE_URL is not set. Vercel can't keep a local database, so every account and record would vanish.");
   if (problems.length) fail([...problems, "Add them in Vercel → Settings → Environment Variables, then redeploy."]);
 
-  const url = process.env.DATABASE_URL;
+  const url = process.env.DATABASE_URL ? normalizeDatabaseUrl(process.env.DATABASE_URL) : "";
   if (!url) return;
 
   const { default: postgres } = await import("postgres");

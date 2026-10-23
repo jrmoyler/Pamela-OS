@@ -20,7 +20,7 @@ const SETTINGS_HINT = "In Vercel, open the project → Settings → Environment 
 const DIAGNOSES: Record<DbProblem, Omit<DbDiagnosis, "problem">> = {
   bad_password: {
     title: "The database password is wrong",
-    fix: `The password inside DATABASE_URL doesn't match the database. Copy the connection string again from Supabase (Project Settings → Database → Connection string, “Transaction pooler”), put the real password in place of [YOUR-PASSWORD], and URL-encode any special characters (@ # / ? : %). ${SETTINGS_HINT}`,
+    fix: `The password inside DATABASE_URL doesn't match the database. Copy the connection string again from Supabase (Project Settings → Database → Connection string, “Transaction pooler”), put the real password in place of [YOUR-PASSWORD] (remove the brackets). If you don't know the password, reset it on that same Supabase page. ${SETTINGS_HINT}`,
     config: true,
   },
   unknown_user: {
@@ -35,7 +35,7 @@ const DIAGNOSES: Record<DbProblem, Omit<DbDiagnosis, "problem">> = {
   },
   bad_url: {
     title: "DATABASE_URL isn't a valid connection string",
-    fix: `DATABASE_URL must look like postgres://user:password@host:6543/postgres. Special characters in the password must be URL-encoded. ${SETTINGS_HINT}`,
+    fix: `DATABASE_URL must look like postgresql://user:password@host:6543/postgres. Paste only the connection string itself, starting with postgresql://. ${SETTINGS_HINT}`,
     config: true,
   },
   host_not_found: {
@@ -78,7 +78,7 @@ export function diagnoseDbError(e: unknown): DbDiagnosis {
   if (has("28P01") || text.includes("password authentication failed")) problem = "bad_password";
   else if (has("28000") || text.includes("tenant or user not found") || text.includes("role \"")) problem = "unknown_user";
   else if (has("3D000")) problem = "missing_database";
-  else if (has("ERR_INVALID_URL") || text.includes("invalid url")) problem = "bad_url";
+  else if (has("ERR_INVALID_URL") || text.includes("invalid url") || text.includes("uri malformed")) problem = "bad_url";
   else if (has("ENOTFOUND") || has("EAI_AGAIN")) problem = "host_not_found";
   else if (["ECONNREFUSED", "ETIMEDOUT", "ECONNRESET", "CONNECT_TIMEOUT", "EHOSTUNREACH", "57P01", "57P03"].some(has))
     problem = "unreachable";

@@ -192,3 +192,27 @@ test("database failures are explained in plain words", async () => {
   assert.equal(down.config, false);
   assert.ok(diagnoseDbError(wrapped({ code: "28P01" })).config);
 });
+
+test("pasted DATABASE_URL mistakes are cleaned up", async () => {
+  const { normalizeDatabaseUrl: n } = await import("../src/lib/db/url");
+  const host = "aws-0-us-east-1.pooler.supabase.com:6543/postgres";
+  const good = `postgresql://postgres.abc:Secret123@${host}`;
+  assert.equal(n(good), good);
+  assert.equal(n(`"${good}"`), good);
+  assert.equal(n(`  '${good}'\n`), good);
+  assert.equal(n(`DATABASE_URL=${good}`), good);
+  assert.equal(n(`DATABASE_URL="${good}"`), good);
+  assert.equal(n(`postgresql://postgres.abc:[Secret123]@${host}`), good);
+  assert.equal(n(`${good}?pgbouncer=true`), good);
+  assert.equal(n(`${good}?pgbouncer=true&sslmode=require`), `${good}?sslmode=require`);
+  // raw special characters get encoded so the URL parses
+  assert.equal(n(`postgresql://postgres.abc:Pa#s/s?w@rd@${host}`), `postgresql://postgres.abc:${encodeURIComponent("Pa#s/s?w@rd")}@${host}`);
+  assert.equal(n(`postgresql://postgres.abc:100%real@${host}`), `postgresql://postgres.abc:100%25real@${host}`);
+  // already-encoded passwords are left alone
+  assert.equal(n(`postgresql://postgres.abc:Pa%23ss%40@${host}`), `postgresql://postgres.abc:Pa%23ss%40@${host}`);
+  for (const u of [good, `"${good}"`, `DATABASE_URL=${good}`, `postgresql://postgres.abc:Pa#s/s?w@rd@${host}`]) {
+    const parsed = new URL(n(u));
+    assert.equal(parsed.hostname, "aws-0-us-east-1.pooler.supabase.com", u);
+  }
+  assert.equal(decodeURIComponent(new URL(n(`postgresql://postgres.abc:Pa#s/s?w@rd@${host}`)).password), "Pa#s/s?w@rd");
+});
