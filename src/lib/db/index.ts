@@ -3,6 +3,7 @@ import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import * as schema from "./schema";
 import { localDir } from "../localdir";
 import { DatabaseUnavailableError, diagnoseDbError, type DbDiagnosis } from "./diagnose";
+import { normalizeDatabaseUrl } from "./url";
 
 export type DB = PostgresJsDatabase<typeof schema>;
 
@@ -13,7 +14,7 @@ const holder: Holder = (g.__pamelaDb ??= {});
 const migrationsFolder = path.join(process.cwd(), "drizzle");
 
 async function connect(): Promise<DB> {
-  const url = process.env.DATABASE_URL;
+  const url = process.env.DATABASE_URL ? normalizeDatabaseUrl(process.env.DATABASE_URL) : "";
   if (url) {
     const { default: postgres } = await import("postgres");
     const { drizzle } = await import("drizzle-orm/postgres-js");
