@@ -242,3 +242,70 @@ test("public links never point at localhost on a deployed app", async () => {
     set(Object.fromEntries(Object.entries(saved).filter(([, v]) => v !== undefined)) as Record<string, string>);
   }
 });
+
+/** Minimal stored (uncompressed) zip, enough for the .docx reader. */
+function zipStored(files: Record<string, string>) {
+  const locals: Buffer[] = [];
+  const centrals: Buffer[] = [];
+  let offset = 0;
+  for (const [name, text] of Object.entries(files)) {
+    const data = Buffer.from(text, "utf8");
+    const n = Buffer.from(name, "utf8");
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(n.length, 26);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(n.length, 28);
+    central.writeUInt32LE(offset, 42);
+    locals.push(local, n, data);
+    centrals.push(central, n);
+    offset += 30 + n.length + data.length;
+  }
+  const cd = Buffer.concat(centrals);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(Object.keys(files).length, 8);
+  end.writeUInt16LE(Object.keys(files).length, 10);
+  end.writeUInt32LE(cd.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, cd, end]);
+}
+
+test("word documents open as paragraphs and convert to Markdown", async () => {
+  const { docxParagraphs, docxToMarkdown } = await import("../src/lib/docx");
+  const xml =
+    '<w:document><w:body>' +
+    '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Gala plan</w:t></w:r></w:p>' +
+    '<w:p><w:r><w:t xml:space="preserve">Tea &amp; </w:t></w:r><w:r><w:rPr><w:b/></w:rPr><w:t>cake</w:t></w:r></w:p>' +
+    '<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/></w:numPr></w:pPr><w:r><w:t>Book venue</w:t></w:r></w:p>' +
+    '</w:body></w:document>';
+  const paras = docxParagraphs(zipStored({ "[Content_Types].xml": "<x/>", "word/document.xml": xml }));
+  assert.deepEqual(paras, [
+    { text: "Gala plan", heading: 1, list: false },
+    { text: "Tea & cake", heading: null, list: false },
+    { text: "Book venue", heading: null, list: true },
+  ]);
+  assert.equal(docxToMarkdown(paras!), "# Gala plan\n\nTea & cake\n\n- Book venue");
+  assert.equal(docxParagraphs(Buffer.from("not a zip")), null);
+});
+
+test("library knows which files it can edit as text", async () => {
+  const { isTextFile, kindFromMime } = await import("../src/lib/storage");
+  assert.ok(isTextFile("text/markdown", "plan.md"));
+  assert.ok(isTextFile("application/json", "data.json"));
+  assert.ok(isTextFile("application/octet-stream", "notes.md"));
+  assert.ok(!isTextFile("application/pdf", "a.pdf"));
+  assert.ok(!isTextFile("image/png", "a.png"));
+  assert.equal(kindFromMime("application/vnd.openxmlformats-officedocument.wordprocessingml.document"), "document");
+});
+
+test("html files are served sandboxed", async () => {
+  const res = rangeResponse(new Request("http://x/"), Buffer.from("<script>1</script>"), "text/html", "a.html");
+  assert.equal(res.headers.get("content-security-policy"), "sandbox");
+  assert.equal(rangeResponse(new Request("http://x/"), Buffer.from("x"), "application/pdf", "a.pdf").headers.get("content-security-policy"), null);
+});

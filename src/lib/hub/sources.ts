@@ -266,6 +266,7 @@ const MIME_BY_EXT: Record<string, string> = {
   pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", heic: "image/heic",
   mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm", mp3: "audio/mpeg", m4a: "audio/mp4", wav: "audio/wav",
   txt: "text/plain", md: "text/markdown", csv: "text/csv", json: "application/json",
+  html: "text/html", htm: "text/html", xml: "application/xml", svg: "image/svg+xml", rtf: "application/rtf",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",

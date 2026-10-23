@@ -3,7 +3,7 @@ import { getDb, schema } from "../db";
 import { BRAND } from "../brand";
 import { RJ_TOOLS, runTool } from "../rj/tools";
 import { findOrCreateContact } from "../crm";
-import { readFile } from "../storage";
+import { isTextFile, readFile } from "../storage";
 import { signedMediaUrl } from "../outbound";
 import { CLIENT_LABELS, hasScope, type AgentClient, type AgentKey, type Scope } from "./keys";
 import { addInboxItem, pushFile } from "./inbox";
@@ -44,7 +44,10 @@ const contactProps = {
 };
 
 /** RJ's own tools, re-exposed. Read-only ones need "read"; ones that change data or draft need "write". */
-const RJ_READ = new Set(["search_contacts", "get_contact", "list_tasks", "get_calendar", "find_open_slots", "pipeline_summary", "pending_approvals", "daily_triage", "search_history", "search_files", "read_file_text"]);
+const RJ_READ = new Set([
+  "search_contacts", "get_contact", "list_tasks", "get_calendar", "find_open_slots", "pipeline_summary", "list_pipelines", "list_funnels",
+  "pending_approvals", "daily_triage", "search_history", "search_files", "read_file_text",
+]);
 const RJ_SKIP = new Set(["request_computer_task"]);
 
 const HUB_TOOLS: Tool[] = [
@@ -117,7 +120,7 @@ const HUB_TOOLS: Tool[] = [
       const f = /^[0-9a-f-]{36}$/i.test(id) ? await readFile(id) : null;
       if (!f) return { error: "not found" };
       const out: Record<string, unknown> = { fileId: id, name: f.name, mime: f.mime, size: f.data.byteLength, url: signedMediaUrl(id, 3600) };
-      if (/^text\/|json|xml|csv|markdown/.test(f.mime)) out.text = f.data.toString("utf8").slice(0, 100_000);
+      if (isTextFile(f.mime, f.name)) out.text = f.data.toString("utf8").slice(0, 100_000);
       else if (a.include_base64 && f.data.byteLength <= 2 * 1024 * 1024) out.base64 = f.data.toString("base64");
       return out;
     },
@@ -211,7 +214,8 @@ export function toolsFor(key: AgentKey): Tool[] {
     description: t.description,
     inputSchema: t.parameters,
     scope: RJ_READ.has(t.name) ? "read" : "write",
-    run: (args) => runTool(t.name, args),
+    // "by" credits the agent on anything it creates (deal timelines, events).
+    run: (args, k) => runTool(t.name, { ...args, by: k.client }),
   }));
   const all = [...HUB_TOOLS, ...(key.client === "hermes" ? HERMES_TOOLS : []), ...rj];
   return all.filter((t) => hasScope(key, t.scope));
@@ -238,7 +242,9 @@ export async function handleRpc(msg: RpcRequest, key: AgentKey): Promise<RpcResp
         instructions: [
           `Pamela OS is the operating system for ${BRAND.name}: her CRM, tasks, calendar, files and approvals.`,
           `You are connected as “${key.name}” (${CLIENT_LABELS[key.client as AgentClient] ?? key.client}).`,
-          "Use push_file and push_note to hand Pamela anything you made or found. Drafted emails and texts wait in her Approvals; nothing reaches another person until she says yes.",
+          "Use push_file and push_note to hand Pamela anything you made or found, and update_file to edit a Library file in place.",
+          "You can build her pipelines (create_pipeline, add_pipeline_stage), deals (create_deal, update_deal, move_deal) and funnels (create_funnel); use list_pipelines and list_funnels first to avoid duplicates.",
+          "Drafted emails and texts, and publishing a page, wait in her Approvals; nothing reaches another person until she says yes.",
         ].join(" "),
       });
     }

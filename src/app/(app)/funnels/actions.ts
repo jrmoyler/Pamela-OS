@@ -10,19 +10,8 @@ import { createApproval } from "@/lib/approvals";
 import { contactName } from "@/lib/crm";
 import { appUrl } from "@/lib/outbound";
 import { createPaymentRequest } from "@/lib/modules/payments";
-import { PAGE_TEMPLATES, RESERVED_SLUGS, DEFAULT_FORM_FIELDS, blockDef, newBlock, slugify } from "@/lib/modules/funnels";
+import { PAGE_TEMPLATES, DEFAULT_FORM_FIELDS, blockDef, newBlock, slugify, uniqueSlug } from "@/lib/modules/funnels";
 import { requireSession } from "@/lib/auth";
-
-async function uniqueSlug(base: string, exceptId?: string) {
-  const db = await getDb();
-  let slug = slugify(base);
-  if (RESERVED_SLUGS.includes(slug)) slug = `${slug}-page`;
-  for (let i = 2; ; i++) {
-    const [hit] = await db.select({ id: schema.pages.id }).from(schema.pages).where(eq(schema.pages.slug, slug));
-    if (!hit || hit.id === exceptId) return slug;
-    slug = `${slugify(base)}-${i}`;
-  }
-}
 
 async function getPage(id: string) {
   const db = await getDb();

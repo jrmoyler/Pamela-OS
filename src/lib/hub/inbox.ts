@@ -83,7 +83,8 @@ export async function pushFile(input: {
     else throw new Error("Send the file as base64, as text, or as a url.");
     if (data.byteLength > MAX_INLINE_BYTES) throw new Error("File is too large to send inline (20 MB). Send a url instead.");
     if (!data.byteLength) throw new Error("The file is empty.");
-    const mime = input.mime || (input.text != null && !/\.\w+$/.test(name) ? "text/plain" : mimeFromName(name));
+    const given = input.mime && input.mime !== "application/octet-stream" ? input.mime : null;
+    const mime = given || (input.text != null && !/\.\w+$/.test(name) ? "text/plain" : mimeFromName(name));
     file = await putFile(data, name, mime, { source: input.source, description: input.description, tags: input.tags });
   }
   if (input.computerTaskId) await attachFileToTask(input.computerTaskId, file.id);

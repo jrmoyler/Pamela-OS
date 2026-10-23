@@ -5,7 +5,10 @@ export function rangeResponse(req: Request, data: Buffer, mime: string, name: st
     "accept-ranges": "bytes",
     "content-disposition": `inline; filename="${encodeURIComponent(name)}"`,
     "cache-control": "private, max-age=3600",
+    "x-content-type-options": "nosniff",
   };
+  // Files agents push in can be HTML or SVG; never let them run script with her session.
+  if (/html|svg|xml/.test(mime)) headers["content-security-policy"] = "sandbox";
   if (range) {
     const m = range.match(/^bytes=(\d*)-(\d*)$/);
     if (m && (m[1] || m[2])) {

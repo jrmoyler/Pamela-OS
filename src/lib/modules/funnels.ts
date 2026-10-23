@@ -86,6 +86,80 @@ export function slugify(s: string) {
 /** Slugs that collide with fixed routes under /p. */
 export const RESERVED_SLUGS = ["thanks"];
 
+export async function uniqueSlug(base: string, exceptId?: string) {
+  const db = await getDb();
+  let slug = slugify(base);
+  if (RESERVED_SLUGS.includes(slug)) slug = `${slug}-page`;
+  for (let i = 2; ; i++) {
+    const [hit] = await db.select({ id: schema.pages.id }).from(schema.pages).where(eq(schema.pages.slug, slug));
+    if (!hit || hit.id === exceptId) return slug;
+    slug = `${slugify(base)}-${i}`;
+  }
+}
+
+/** Only the props a block declares, typed the way the page editor saves them. */
+function cleanProps(type: string, props: Record<string, unknown>) {
+  const def = blockDef(type)!;
+  const out: Record<string, unknown> = { ...def.defaults };
+  for (const f of def.fields) {
+    if (!(f.key in props)) continue;
+    const v = props[f.key];
+    if (f.type === "money") out[f.key] = Math.max(0, Math.round(Number(v) || 0));
+    else if (f.type === "checkbox") out[f.key] = v === true || v === "true";
+    else if (f.type === "file") out[f.key] = typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v) ? v : null;
+    else if (f.type !== "form") out[f.key] = v == null ? "" : String(v).slice(0, 10_000);
+  }
+  return out;
+}
+
+/**
+ * A funnel in one go: a landing page plus (when it has a form block) a signup
+ * form whose people land as deals in a pipeline stage. The page starts as a
+ * draft; going live still goes through Approvals.
+ */
+export async function createFunnel(input: {
+  title: string;
+  template?: string;
+  slug?: string;
+  blocks?: { type: string; props?: Record<string, unknown> }[];
+  pipelineId?: string | null;
+  stageId?: string | null;
+  formTags?: string[];
+  formFields?: FormField[];
+}) {
+  const title = input.title.trim() || "Untitled page";
+  const tpl = PAGE_TEMPLATES[input.template ?? ""] ?? PAGE_TEMPLATES[input.blocks?.length ? "blank" : "lead"];
+  let blocks: PageBlock[];
+  if (input.blocks?.length) {
+    blocks = input.blocks.filter((b) => blockDef(b.type)).slice(0, 40).map((b) => ({ ...newBlock(b.type), props: cleanProps(b.type, b.props ?? {}) }));
+    if (!blocks.length) throw new Error(`Unknown block types. Use: ${BLOCK_DEFS.map((b) => b.type).join(", ")}.`);
+  } else {
+    blocks = tpl.blocks.map(newBlock);
+    const hero = blocks.find((b) => b.type === "hero");
+    if (hero) hero.props.headline = title;
+  }
+  const db = await getDb();
+  let form: typeof schema.forms.$inferSelect | null = null;
+  if (blocks.some((b) => b.type === "form")) {
+    [form] = await db
+      .insert(schema.forms)
+      .values({
+        name: `${title} signup`,
+        fields: input.formFields?.length ? input.formFields : DEFAULT_FORM_FIELDS,
+        tags: input.formTags ?? [],
+        pipelineId: input.stageId ? (input.pipelineId ?? null) : null,
+        stageId: input.pipelineId ? (input.stageId ?? null) : null,
+      })
+      .returning();
+    for (const b of blocks) if (b.type === "form") b.props.formId = form.id;
+  }
+  const [page] = await db
+    .insert(schema.pages)
+    .values({ title, slug: await uniqueSlug(input.slug || title), kind: input.blocks?.length ? "landing" : tpl.kind, blocks })
+    .returning();
+  return { page, form };
+}
+
 export const PAGE_TEMPLATES: Record<string, { label: string; kind: string; blocks: string[] }> = {
   blank: { label: "Blank", kind: "landing", blocks: ["hero"] },
   lead: { label: "Lead magnet", kind: "lead_magnet", blocks: ["hero", "text", "form", "testimonial", "contact"] },

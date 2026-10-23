@@ -351,14 +351,244 @@ export const RJ_TOOLS: RjTool[] = [
   },
   {
     name: "read_file_text",
-    description: "Read the text of a text-like file in the Library (txt, md, csv, json, html). Returns the first 20,000 characters.",
+    description: "Read the text of a file in the Library (txt, md, csv, json, html, or a Word .docx). Returns the first 20,000 characters.",
     parameters: { type: "object", properties: { fileId: { type: "string" } }, required: ["fileId"] },
     async run(a) {
-      const { readFile } = await import("../storage");
+      const { readFile, isTextFile, isDocx } = await import("../storage");
       const f = /^[0-9a-f-]{36}$/i.test(str(a.fileId)) ? await readFile(str(a.fileId)) : null;
       if (!f) return { error: "not found" };
-      if (!/^text\/|json|xml|csv|markdown/.test(f.mime)) return { error: `“${f.name}” is ${f.mime}; only text files can be read here.`, name: f.name, mime: f.mime };
+      if (isDocx(f.mime, f.name)) {
+        const { docxParagraphs, docxToMarkdown } = await import("../docx");
+        const paras = docxParagraphs(f.data);
+        if (paras) return { name: f.name, mime: f.mime, text: docxToMarkdown(paras).slice(0, 20_000), note: "Word document shown as text; it can't be rewritten in place." };
+      }
+      if (!isTextFile(f.mime, f.name)) return { error: `“${f.name}” is ${f.mime}; only text files can be read here.`, name: f.name, mime: f.mime };
       return { name: f.name, mime: f.mime, text: f.data.toString("utf8").slice(0, 20_000) };
+    },
+  },
+  {
+    name: "update_file",
+    description:
+      "Edit a file in Pamela's Library: replace a text file's contents (txt, md, csv, json, html) and/or change its name, description or tags. Read it first with read_file_text so you don't lose what's there.",
+    parameters: {
+      type: "object",
+      properties: {
+        fileId: { type: "string" },
+        text: { type: "string", description: "The complete new contents (text files only)" },
+        name: { type: "string" },
+        description: { type: "string" },
+        tags: { type: "array", items: { type: "string" } },
+      },
+      required: ["fileId"],
+    },
+    async run(a) {
+      const { getFileRecord, isTextFile, replaceFileContent } = await import("../storage");
+      const id = str(a.fileId);
+      const rec = /^[0-9a-f-]{36}$/i.test(id) ? await getFileRecord(id) : null;
+      if (!rec) return { error: "not found" };
+      if (a.text != null) {
+        if (!isTextFile(rec.mime, rec.name)) return { error: `“${rec.name}” is ${rec.mime}; only text files can be rewritten. Push a new file instead.` };
+        await replaceFileContent(id, Buffer.from(str(a.text), "utf8"));
+      }
+      const set: Partial<typeof schema.files.$inferInsert> = {};
+      if (str(a.name).trim()) set.name = str(a.name).trim();
+      if (a.description != null) set.description = str(a.description).trim() || null;
+      if (Array.isArray(a.tags)) set.tags = a.tags.map(String).slice(0, 20);
+      const db = await getDb();
+      if (Object.keys(set).length) await db.update(schema.files).set(set).where(eq(schema.files.id, id));
+      const [f] = await db.select().from(schema.files).where(eq(schema.files.id, id));
+      return { ok: true, fileId: f.id, name: f.name, size: f.size, description: f.description, tags: f.tags };
+    },
+  },
+  {
+    name: "list_pipelines",
+    description: "Every pipeline with its stages (ids and names) and how many open deals each stage has.",
+    parameters: { type: "object", properties: {} },
+    async run() {
+      const db = await getDb();
+      const [pipes, stages, counts] = await Promise.all([
+        db.select().from(schema.pipelines).orderBy(asc(schema.pipelines.position), asc(schema.pipelines.createdAt)),
+        db.select().from(schema.pipelineStages).orderBy(asc(schema.pipelineStages.position)),
+        db.select({ stageId: schema.deals.stageId, n: sql<number>`count(*)::int` }).from(schema.deals).groupBy(schema.deals.stageId),
+      ]);
+      const n = new Map(counts.map((c) => [c.stageId, c.n]));
+      return pipes.map((p) => ({
+        id: p.id,
+        name: p.name,
+        businessLine: p.businessLine,
+        stages: stages.filter((st) => st.pipelineId === p.id).map((st) => ({ id: st.id, name: st.name, won: st.isWon, lost: st.isLost, deals: n.get(st.id) ?? 0 })),
+      }));
+    },
+  },
+  {
+    name: "create_pipeline",
+    description: "Create a new sales/relationship pipeline (e.g. “DR investor pitch”, “Church bundle prospects”) with its stages in order. Stages named Won/Booked/Paid count as won; Lost/Passed as lost.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        businessLine: { type: "string", description: "Which part of the business it belongs to (defaults to the name)" },
+        stages: { type: "array", items: { type: "string" }, description: "Stage names in order. Default: New, In progress, Won, Lost" },
+      },
+      required: ["name"],
+    },
+    async run(a) {
+      const { createPipeline, findPipeline } = await import("../modules/pipelines");
+      const existing = await findPipeline(str(a.name));
+      if (existing && existing.name.toLowerCase() === str(a.name).trim().toLowerCase()) return { error: `A pipeline called “${existing.name}” already exists.`, pipelineId: existing.id };
+      const { pipeline, stages } = await createPipeline({ name: str(a.name), businessLine: str(a.businessLine) || null, stages: Array.isArray(a.stages) ? a.stages.map(String) : undefined });
+      return { ok: true, pipelineId: pipeline.id, name: pipeline.name, stages: stages.map((st) => ({ id: st.id, name: st.name })), link: `/pipelines/${pipeline.id}` };
+    },
+  },
+  {
+    name: "add_pipeline_stage",
+    description: "Add a stage to the end of an existing pipeline.",
+    parameters: { type: "object", properties: { pipeline: { type: "string", description: "Pipeline id or name" }, stage: { type: "string" } }, required: ["pipeline", "stage"] },
+    async run(a) {
+      const { addStage, findPipeline } = await import("../modules/pipelines");
+      const p = await findPipeline(str(a.pipeline));
+      if (!p) return { error: "pipeline not found" };
+      if (!str(a.stage).trim()) return { error: "stage is required" };
+      const st = await addStage(p.id, str(a.stage));
+      return { ok: true, pipelineId: p.id, stageId: st.id, stage: st.name };
+    },
+  },
+  {
+    name: "create_deal",
+    description: "Add a deal (a prospect, opportunity, booking or donation in progress) to a pipeline. Names a contact by id, or by name/email (created if new).",
+    parameters: {
+      type: "object",
+      properties: {
+        pipeline: { type: "string", description: "Pipeline id or name" },
+        title: { type: "string" },
+        stage: { type: "string", description: "Stage id or name (default: the first stage)" },
+        value: { type: "number", description: "Dollar value" },
+        contactId: { type: "string" },
+        contactName: { type: "string" },
+        contactEmail: { type: "string" },
+        notes: { type: "string" },
+        due: { type: "string", description: "YYYY-MM-DD, 'tomorrow' or 'in 3 days'" },
+      },
+      required: ["pipeline", "title"],
+    },
+    async run(a) {
+      const { createDeal, findPipeline, findStage } = await import("../modules/pipelines");
+      const p = await findPipeline(str(a.pipeline));
+      if (!p) return { error: "pipeline not found — create it with create_pipeline first" };
+      const st = await findStage(p.id, str(a.stage) || null);
+      if (!st) return { error: a.stage ? `No stage like “${str(a.stage)}” in ${p.name}.` : `${p.name} has no stages yet.` };
+      const { deal } = await createDeal({
+        pipelineId: p.id,
+        stageId: st.id,
+        title: str(a.title),
+        valueCents: Number(a.value || 0) * 100,
+        contactId: /^[0-9a-f-]{36}$/i.test(str(a.contactId)) ? str(a.contactId) : null,
+        contactName: str(a.contactName) || null,
+        contactEmail: str(a.contactEmail) || null,
+        notes: str(a.notes) || null,
+        dueDate: parseDue(a.due),
+        by: str(a.by) || "rj",
+      });
+      return { ok: true, dealId: deal.id, title: deal.title, pipeline: p.name, stage: st.name, contactId: deal.contactId, link: `/pipelines/${p.id}` };
+    },
+  },
+  {
+    name: "update_deal",
+    description: "Change a deal's title, value, notes or due date.",
+    parameters: {
+      type: "object",
+      properties: { dealId: { type: "string" }, title: { type: "string" }, value: { type: "number" }, notes: { type: "string" }, due: { type: "string" } },
+      required: ["dealId"],
+    },
+    async run(a) {
+      const db = await getDb();
+      const set: Partial<typeof schema.deals.$inferInsert> = { updatedAt: new Date() };
+      if (str(a.title).trim()) set.title = str(a.title).trim();
+      if (a.value != null) set.valueCents = Math.max(0, Math.round(Number(a.value) * 100));
+      if (a.notes != null) set.notes = str(a.notes) || null;
+      if (a.due != null) set.dueDate = parseDue(a.due);
+      const [deal] = /^[0-9a-f-]{36}$/i.test(str(a.dealId)) ? await db.update(schema.deals).set(set).where(eq(schema.deals.id, str(a.dealId))).returning() : [];
+      if (!deal) return { error: "deal not found" };
+      return { ok: true, dealId: deal.id, title: deal.title, value: deal.valueCents / 100 };
+    },
+  },
+  {
+    name: "list_funnels",
+    description: "Pamela's funnel pages and signup forms, with where each form sends people.",
+    parameters: { type: "object", properties: {} },
+    async run() {
+      const db = await getDb();
+      const [pages, forms] = await Promise.all([
+        db.select().from(schema.pages).orderBy(desc(schema.pages.updatedAt)).limit(50),
+        db.select().from(schema.forms).orderBy(desc(schema.forms.createdAt)).limit(50),
+      ]);
+      return {
+        pages: pages.map((p) => ({ id: p.id, title: p.title, slug: p.slug, kind: p.kind, published: p.published, views: p.views, blocks: p.blocks.map((b) => b.type) })),
+        forms: forms.map((f) => ({ id: f.id, name: f.name, submissions: f.submissions, pipelineId: f.pipelineId, stageId: f.stageId, tags: f.tags })),
+      };
+    },
+  },
+  {
+    name: "create_funnel",
+    description:
+      "Build a funnel: a landing page (draft) and, when it has a form block, a signup form that files each person as a deal in a pipeline stage. Give a template, or write the page yourself as blocks. Block types: hero {headline, subheadline, buttonText, buttonHref}, text {heading, body}, form {heading, buttonText}, booking {slug, heading, text}, cta {headline, text, buttonText, buttonHref}, testimonial {quote, author, role}, product {name, description, priceCents, buttonText}, contact {text}. Going live waits for Pamela's approval.",
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        template: { type: "string", enum: ["lead", "speaking", "sales", "blank", "thanks"], description: "Starting layout when you don't send blocks (default lead)" },
+        slug: { type: "string", description: "Web address after /p/ (made from the title if empty)" },
+        blocks: { type: "array", items: { type: "object", properties: { type: { type: "string" }, props: { type: "object" } }, required: ["type"] } },
+        pipeline: { type: "string", description: "Pipeline id or name signups go into" },
+        stage: { type: "string", description: "Stage in that pipeline (default: first stage)" },
+        tags: { type: "array", items: { type: "string" }, description: "Tags put on everyone who signs up" },
+        requestPublish: { type: "boolean", description: "Also put “publish this page” in Pamela's Approvals" },
+      },
+      required: ["title"],
+    },
+    async run(a) {
+      const { createFunnel } = await import("../modules/funnels");
+      const { findPipeline, findStage } = await import("../modules/pipelines");
+      let pipelineId: string | null = null;
+      let stageId: string | null = null;
+      if (str(a.pipeline)) {
+        const p = await findPipeline(str(a.pipeline));
+        if (!p) return { error: "pipeline not found — create it with create_pipeline first" };
+        const st = await findStage(p.id, str(a.stage) || null);
+        if (!st) return { error: `No matching stage in ${p.name}.` };
+        pipelineId = p.id;
+        stageId = st.id;
+      }
+      const blocks = Array.isArray(a.blocks) ? (a.blocks as { type: string; props?: Record<string, unknown> }[]).filter((b) => b && typeof b.type === "string") : undefined;
+      const { page, form } = await createFunnel({
+        title: str(a.title),
+        template: str(a.template) || undefined,
+        slug: str(a.slug) || undefined,
+        blocks,
+        pipelineId,
+        stageId,
+        formTags: Array.isArray(a.tags) ? a.tags.map(String).slice(0, 20) : [],
+      });
+      if (a.requestPublish) {
+        const { appUrl } = await import("../outbound");
+        await createApproval({
+          kind: "publish_page",
+          title: `Publish page “${page.title}”`,
+          summary: `Goes live at ${appUrl()}/p/${page.slug} with ${page.blocks.length} block${page.blocks.length === 1 ? "" : "s"}.`,
+          payload: { pageId: page.id },
+          subjectType: "page",
+          subjectId: page.id,
+        });
+      }
+      return {
+        ok: true,
+        pageId: page.id,
+        slug: page.slug,
+        formId: form?.id ?? null,
+        signupsGoTo: pipelineId ? { pipelineId, stageId } : null,
+        status: a.requestPublish ? "draft — publish request waiting in Approvals" : "draft",
+        editLink: `/funnels/pages/${page.id}`,
+      };
     },
   },
   {

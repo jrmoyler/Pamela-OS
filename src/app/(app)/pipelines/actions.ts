@@ -2,10 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { asc, eq, max } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { emit } from "@/lib/events";
-import { logActivity, findOrCreateContact } from "@/lib/crm";
+import { logActivity } from "@/lib/crm";
+import { addStage as addStageRecord, createDeal as createDealRecord, createPipeline as createPipelineRecord, DEFAULT_STAGES } from "@/lib/modules/pipelines";
 import { requireSession } from "@/lib/auth";
 
 export async function moveDeal(dealId: string, stageId: string, position: number) {
@@ -28,54 +29,37 @@ export async function moveDeal(dealId: string, stageId: string, position: number
 
 export async function createDeal(pipelineId: string, form: FormData) {
   await requireSession();
-  const db = await getDb();
   const stageId = String(form.get("stageId") || "");
   if (!stageId) return; // pipeline has no stages yet
   const name = String(form.get("contact") ?? "").trim();
-  const email = String(form.get("email") ?? "").trim();
-  let contactId: string | null = String(form.get("contactId") || "") || null;
-  if (!contactId && (name || email)) {
-    const { contact, created } = await findOrCreateContact({ name, email: email || null, source: "pipeline" });
-    contactId = contact.id;
-    if (created) await emit("contact.created", { contactId, source: "pipeline" }, "pipelines");
-  }
-  const [{ value }] = await db.select({ value: max(schema.deals.position) }).from(schema.deals).where(eq(schema.deals.stageId, stageId));
-  const [deal] = await db
-    .insert(schema.deals)
-    .values({
-      pipelineId,
-      stageId,
-      contactId,
-      title: String(form.get("title") || name || "New deal"),
-      valueCents: Math.round(Number(form.get("value") || 0) * 100),
-      position: (value ?? 0) + 1,
-    })
-    .returning();
-  await logActivity({ type: "system", contactId, dealId: deal.id, title: `Deal created: ${deal.title}` });
-  await emit("deal.created", { dealId: deal.id, pipelineId, contactId }, "pipelines");
+  await createDealRecord({
+    pipelineId,
+    stageId,
+    title: String(form.get("title") || "") || null,
+    valueCents: Number(form.get("value") || 0) * 100,
+    contactId: String(form.get("contactId") || "") || null,
+    contactName: name,
+    contactEmail: String(form.get("email") ?? ""),
+  });
   revalidatePath(`/pipelines/${pipelineId}`);
 }
 
 export async function createPipeline(form: FormData) {
   await requireSession();
-  const db = await getDb();
   const name = String(form.get("name") ?? "").trim();
   if (!name) return;
-  const [p] = await db.insert(schema.pipelines).values({ name, businessLine: String(form.get("businessLine") || name) }).returning();
-  const stages = String(form.get("stages") || "New, In progress, Won, Lost")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  await db.insert(schema.pipelineStages).values(stages.map((s, i) => ({ pipelineId: p.id, name: s, position: i, isWon: /won|booked|closed won|paid/i.test(s), isLost: /lost|passed/i.test(s) })));
-  redirect(`/pipelines/${p.id}`);
+  const { pipeline } = await createPipelineRecord({
+    name,
+    businessLine: String(form.get("businessLine") || "") || null,
+    stages: String(form.get("stages") || DEFAULT_STAGES.join(", ")).split(","),
+  });
+  redirect(`/pipelines/${pipeline.id}`);
 }
 
 export async function addStage(pipelineId: string, form: FormData) {
   await requireSession();
-  const db = await getDb();
   const name = String(form.get("name") ?? "").trim();
   if (!name) return;
-  const existing = await db.select().from(schema.pipelineStages).where(eq(schema.pipelineStages.pipelineId, pipelineId)).orderBy(asc(schema.pipelineStages.position));
-  await db.insert(schema.pipelineStages).values({ pipelineId, name, position: existing.length });
+  await addStageRecord(pipelineId, name);
   revalidatePath(`/pipelines/${pipelineId}`);
 }
