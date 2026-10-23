@@ -21,8 +21,47 @@ async function live() {
   return (await getSetting("deliveryMode")) === "live";
 }
 
+const LOCAL_URL = /^(https?:\/\/)?(localhost|127\.\d+\.\d+\.\d+|0\.0\.0\.0|\[::1\])(:\d+)?(\/|$)/i;
+
+/** True for addresses only this machine can reach — Claude, Twilio, Meta and Stripe can never call them. */
+export function isLocalUrl(url: string) {
+  return LOCAL_URL.test(url.trim());
+}
+
+function cleanBase(url: string) {
+  const u = url.trim().replace(/\/+$/, "");
+  return /^https?:\/\//i.test(u) ? u : `https://${u}`;
+}
+
+/**
+ * Public base URL for links that outside services and agents follow (MCP connector URLs, webhooks,
+ * payment and media links). APP_URL wins; on Vercel without it (or with a leftover localhost value)
+ * we use the project's production domain, so links never point at localhost on a deployed app.
+ */
 export function appUrl() {
-  return (process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  const configured = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL;
+  const deployed = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
+  if (configured && !(deployed && isLocalUrl(configured))) return cleanBase(configured);
+  if (deployed) return cleanBase(deployed);
+  return configured ? cleanBase(configured) : "http://localhost:3000";
+}
+
+/**
+ * appUrl() for code running inside a page or server action: when no public address is configured
+ * (e.g. a VPS without APP_URL), use the address the browser actually reached instead of localhost.
+ */
+export async function requestAppUrl() {
+  const base = appUrl();
+  if (!isLocalUrl(base)) return base;
+  try {
+    const { headers } = await import("next/headers");
+    const h = await headers();
+    const host = h.get("x-forwarded-host") ?? h.get("host");
+    if (host && !isLocalUrl(host)) return `${h.get("x-forwarded-proto") ?? "https"}://${host}`;
+  } catch {
+    // Outside a request (worker, scripts): fall through.
+  }
+  return base;
 }
 
 /** Signed, expiring public URL for a stored file (needed for MMS / Instagram media fetches). */
