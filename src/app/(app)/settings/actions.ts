@@ -40,6 +40,7 @@ export async function saveBrand(form: FormData) {
     tagline: String(form.get("tagline") ?? kit.tagline),
     signature: String(form.get("signature") ?? kit.signature),
     voiceNotes: String(form.get("voiceNotes") ?? kit.voiceNotes),
+    visualStyle: String(form.get("visualStyle") ?? kit.visualStyle),
     bannedPhrases: String(form.get("bannedPhrases") ?? "")
       .split("\n")
       .map((s) => s.trim())

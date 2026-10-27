@@ -10,7 +10,9 @@ import { cn } from "@/lib/utils";
 export function Sidebar({ pendingApprovals }: { pendingApprovals: number }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/"));
+  const matches = (href: string) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/"));
+  // The most specific item wins, so /studio/video lights up "Video clips", not "Create" (/studio).
+  const isActive = (href: string) => matches(href) && !NAV.some((g) => g.items.some((i) => i.href.length > href.length && i.href.startsWith(href) && matches(i.href)));
 
   const body = (
     <nav className="flex h-full flex-col gap-4 overflow-y-auto px-3 py-4">

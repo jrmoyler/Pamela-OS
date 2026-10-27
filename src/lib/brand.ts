@@ -28,6 +28,8 @@ export type BrandKit = {
   signature: string;
   bannedPhrases: string[];
   voiceNotes: string;
+  /** Art direction the Create studio adds to every image and video prompt wired to the Brand kit. */
+  visualStyle: string;
 };
 
 export const DEFAULT_BRAND_KIT: BrandKit = {
@@ -39,6 +41,8 @@ export const DEFAULT_BRAND_KIT: BrandKit = {
   bannedPhrases: ["ACOC", "Cup of Compassion"],
   voiceNotes:
     "Warm, faith-forward, direct and encouraging. Short paragraphs. Speaks like a trusted friend and advocate. Never pushy, never corporate jargon.",
+  visualStyle:
+    "Warm, hopeful and dignified. Real, diverse families and women in everyday community moments. Soft natural window light, gentle depth of field, editorial photography. Deep royal purple (#6a1b9a) accents with clean white space and soft lavender tones. Uplifting, never staged or corporate.",
 };
 
 const ABBREVIATIONS = [/\bACOC\b/i, /\bA\.?C\.?O\.?C\.?\b/i];

@@ -6,7 +6,7 @@ import { getDb, schema } from "./db";
  * over the /api/worker endpoints; when no worker is running the scheduler runs
  * them inline so everything still works on a single box.
  */
-export type JobType = "meeting.process" | "video.process" | "video.render_clip" | "voice.render" | "song.generate" | "computer.run";
+export type JobType = "meeting.process" | "video.process" | "video.render_clip" | "voice.render" | "song.generate" | "computer.run" | "studio.run";
 
 const HANDLERS: Record<JobType, () => Promise<(payload: Record<string, unknown>) => Promise<Record<string, unknown> | void>>> = {
   "meeting.process": () => import("./modules/meetings").then((m) => m.processMeetingJob),
@@ -15,6 +15,7 @@ const HANDLERS: Record<JobType, () => Promise<(payload: Record<string, unknown>)
   "voice.render": () => import("./modules/voice").then((m) => m.renderVoiceJob),
   "song.generate": () => import("./modules/music").then((m) => m.generateSongJob),
   "computer.run": () => import("./hub/computer").then((m) => m.runComputerTaskJob),
+  "studio.run": () => import("./studio/run").then((m) => m.runGenerationsJob),
 };
 
 export async function enqueue(type: JobType, payload: Record<string, unknown>, runAt = new Date()) {
