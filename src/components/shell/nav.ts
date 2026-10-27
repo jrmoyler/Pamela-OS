@@ -19,6 +19,7 @@ import {
   Settings,
   LayoutDashboard,
   FolderOpen,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 
@@ -58,6 +59,7 @@ export const NAV: NavGroup[] = [
   {
     label: "Studios",
     items: [
+      { href: "/studio", label: "Create", icon: Sparkles },
       { href: "/studio/video", label: "Video clips", icon: Clapperboard },
       { href: "/studio/design", label: "Design", icon: Palette },
       { href: "/studio/music", label: "Music", icon: Music },

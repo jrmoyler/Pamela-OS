@@ -598,6 +598,38 @@ export const designs = pgTable("designs", {
   updatedAt: updatedAt(),
 });
 
+/** A node canvas in the Create studio. The graph shape lives in lib/studio/graph.ts. */
+export const studioFlows = pgTable("studio_flows", {
+  id: id(),
+  title: text("title").notNull(),
+  graph: jsonb("graph").$type<{ nodes: unknown[]; edges: unknown[] }>().notNull().default({ nodes: [], edges: [] }),
+  coverFileId: uuid("cover_file_id").references(() => files.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+/** One run of one canvas node: what was asked, which engine ran it, and the files it made. */
+export const studioGenerations = pgTable(
+  "studio_generations",
+  {
+    id: id(),
+    flowId: uuid("flow_id").references(() => studioFlows.id, { onDelete: "cascade" }),
+    nodeId: text("node_id").notNull(),
+    kind: text("kind").notNull(), // the node type: generate_image | edit_image | upscale | remove_bg | generate_video | voice | design | clips
+    provider: text("provider"), // comfyui | replicate | fal | elevenlabs | chatterbox | pamela
+    model: text("model"),
+    prompt: text("prompt"),
+    params: jsonb("params").$type<Record<string, unknown>>().notNull().default({}),
+    inputFileIds: jsonb("input_file_ids").$type<string[]>().notNull().default([]),
+    outputFileIds: jsonb("output_file_ids").$type<string[]>().notNull().default([]),
+    status: text("status").notNull().default("queued"), // queued | running | done | failed
+    error: text("error"),
+    createdAt: createdAt(),
+    finishedAt: ts("finished_at"),
+  },
+  (t) => [index("studio_generations_flow_idx").on(t.flowId, t.nodeId, t.createdAt)],
+);
+
 export type ClipSuggestion = {
   id: string;
   start: number;

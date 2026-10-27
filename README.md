@@ -50,7 +50,7 @@ npm run build          # production build
 
 | Concern | Where |
 |---|---|
-| Data model (35 tables) | `src/lib/db/schema.ts`, migrations in `drizzle/` (auto-applied on boot) |
+| Data model (43 tables) | `src/lib/db/schema.ts`, migrations in `drizzle/` (auto-applied on boot) |
 | Approval gate | `src/lib/approvals.ts`, the only importer of `src/lib/outbound.ts` |
 | Brand rules | `src/lib/brand.ts`. Lint runs on every draft; one-click fixes in Approvals |
 | Blackout + availability | `src/lib/time.ts` (3:00–5:30 PM weekdays by default; editable in Settings) |
@@ -88,6 +88,7 @@ npm run build          # production build
 | Booking | `/booking`, public `/book` | Booking types, availability, blackout-aware |
 | Email & Text | `/campaigns` | Broadcasts and event-triggered sequences |
 | Social & DMs | `/social` | Comment-to-DM triggers, post composer, Meta webhook |
+| Create | `/studio`, `/studio/create/[id]`, `/studio/engines` | Node canvas for image, video and voice generation with open-source models; the Brand kit node applies her look and brand assets. See below |
 | Video clips | `/studio/video` | Upload → transcript → scored clips with captions → render 9:16 → approve → post |
 | Design | `/studio/design` | Brand-locked templates, PNG export, optional Canva Connect |
 | Music | `/studio/music` | Suno generation, lyrics with RJ, release checklist |
@@ -133,6 +134,33 @@ Run `npm run build` and enable `deploy/systemd/pamela-web.service` + `pamela-wor
 | Gemini | `GEMINI_API_KEY`, `GEMINI_MODEL` | fallback |
 
 The order per kind of work is editable in **Settings → AI routing**. If a provider errors, the router falls through to the next one.
+
+---
+
+## Create studio: generate on-brand images, video and voice
+
+**Studios → Create** is a node canvas in the style of Runway, Higgsfield, Krea and Magnific. She wires nodes together and runs them; results are downloaded into Pamela OS storage, appear on the canvas and land in the Library (tagged `studio`).
+
+| Node | What it does | Default open model |
+|---|---|---|
+| Prompt, Image, Brand kit | Inputs. Image picks from the Library or uploads. Brand kit adds the art direction from **Settings → Brand kit** and her brand assets (Library files tagged `brand`) | |
+| Generate image | Text → image, or image-guided when a reference is wired in | FLUX.1 schnell; SDXL/FLUX checkpoint on ComfyUI |
+| Edit image | "Change the background", "add a purple scarf" | FLUX.1 Kontext dev |
+| Upscale | 2× / 4× sharpen | Real-ESRGAN |
+| Remove background | Cut-outs for flyers and product shots | BiRefNet / background-remover |
+| Generate video | Image → video or text → video | Wan 2.2 (fal: Wan 2.1) |
+| Her voice | Script spoken in her cloned voice | ElevenLabs or open-source Chatterbox (from **Her voice**) |
+| Brand layout | Puts the image into a brand-locked Design template (Canva-style); opens in Design for PNG export and posting | |
+| Make clips | Sends a video to Video clips (Opus Clip-style shorts) | |
+
+Wires are typed (text, image, video, audio, brand) and colour-coded; a node only accepts a matching wire. **Run** on a node uses the current output of the nodes feeding it; **Run all** runs every generator in dependency order and skips anything downstream of a failure. Runs go through the job queue (`studio.run`), so the VPS worker picks them up, or the open canvas drives them inline.
+
+**Engines** (keys in **Settings → Connections → Generative studio**; per-capability choices in **Create → Engines**):
+
+- **ComfyUI** (`COMFYUI_URL`, optional `COMFYUI_API_KEY`, `COMFYUI_CHECKPOINT`): her own GPU box running any open model. Text → image works with the built-in workflow. For edit, upscale, background removal and video, paste a workflow exported with *Export (API)*, using the placeholders `{{prompt}} {{negative}} {{seed}} {{width}} {{height}} {{count}} {{scale}} {{image}} {{checkpoint}}`.
+- **Replicate** (`REPLICATE_API_TOKEN`) and **fal** (`FAL_KEY`): hosted copies of the same open models, paid per run. Every model slug can be swapped per capability.
+
+Generating creates drafts only. Publishing a generated image still goes through Design → Approvals, and clips through Video clips → Approvals.
 
 ---
 

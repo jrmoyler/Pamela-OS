@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { getDb, schema } from "./db";
 import { encrypt, decrypt } from "./crypto";
 import { DEFAULT_BRAND_KIT, type BrandKit, BRAND } from "./brand";
+import type { Capability } from "./studio/graph";
 
 /** Blackout window: no bookings, receptionist takes messages instead. */
 export type BlackoutWindow = { days: number[]; start: string; end: string; label: string }; // days: 1=Mon..7=Sun
@@ -17,6 +18,12 @@ export type SettingsShape = {
   emailFrom: { name: string; address: string };
   /** How computer tasks reach Hermes: push = call the Hermes API now; pull = Hermes picks them up over MCP; auto = push when Hermes is connected. */
   computerMode: "auto" | "push" | "pull";
+  /** Create studio: preferred engine and model per capability, and ComfyUI workflows she pasted in. */
+  studio: {
+    engines: Partial<Record<Capability, "auto" | "comfyui" | "replicate" | "fal">>;
+    models: Record<string, string>; // "replicate:image" → "black-forest-labs/flux-dev"
+    comfyWorkflows: Partial<Record<Capability, string>>;
+  };
 };
 
 export const DEFAULT_SETTINGS: SettingsShape = {
@@ -43,6 +50,7 @@ export const DEFAULT_SETTINGS: SettingsShape = {
   },
   emailFrom: { name: `Pamela | ${BRAND.name}`, address: "pamela@acupofcompassion.com" },
   computerMode: "auto",
+  studio: { engines: {}, models: {}, comfyWorkflows: {} },
 };
 
 export async function getSetting<K extends keyof SettingsShape>(key: K): Promise<SettingsShape[K]> {
@@ -103,6 +111,11 @@ export const SECRET_DEFS = [
   { key: "SUNO_API_KEY", label: "Suno API key", group: "Studios", secret: true },
   { key: "ELEVENLABS_API_KEY", label: "ElevenLabs API key (voice)", group: "Studios", secret: true },
   { key: "CHATTERBOX_URL", label: "Chatterbox TTS endpoint (VPS)", group: "Studios", secret: false },
+  { key: "COMFYUI_URL", label: "ComfyUI server URL", group: "Generative studio", secret: false, hint: "Her own GPU box running ComfyUI, e.g. https://comfy.example.com (open models: FLUX, SDXL, Wan, LTX)" },
+  { key: "COMFYUI_API_KEY", label: "ComfyUI bearer token", group: "Generative studio", secret: true, hint: "Optional, when the server sits behind an auth proxy" },
+  { key: "COMFYUI_CHECKPOINT", label: "ComfyUI checkpoint for text → image", group: "Generative studio", secret: false, hint: "File name in models/checkpoints, e.g. sd_xl_base_1.0.safetensors or flux1-dev-fp8.safetensors" },
+  { key: "REPLICATE_API_TOKEN", label: "Replicate API token", group: "Generative studio", secret: true, hint: "Hosted open models: FLUX, FLUX Kontext, Wan video, Real-ESRGAN, background removal" },
+  { key: "FAL_KEY", label: "fal API key", group: "Generative studio", secret: true, hint: "Alternative host for the same open models" },
   { key: "GOOGLE_CLIENT_ID", label: "Google OAuth client ID", group: "File sources", secret: false, hint: "For pulling files from Google Drive" },
   { key: "GOOGLE_CLIENT_SECRET", label: "Google OAuth client secret", group: "File sources", secret: true },
   { key: "GOOGLE_REFRESH_TOKEN", label: "Google Drive refresh token", group: "File sources", secret: true, hint: "Scope drive.readonly" },

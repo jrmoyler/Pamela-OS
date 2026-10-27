@@ -79,6 +79,15 @@ async function ttsChatterbox(referenceFileId: string, text: string) {
   return { data: Buffer.from(await res.arrayBuffer()), mime, ext: mime.includes("wav") ? "wav" : "mp3" };
 }
 
+/** Speaks text in a ready clone's voice. Returns audio only; nothing is sent anywhere. */
+export async function speakWithClone(cloneId: string, text: string) {
+  const db = await getDb();
+  const [clone] = await db.select().from(schema.voiceClones).where(eq(schema.voiceClones.id, cloneId));
+  if (!clone || clone.status !== "ready" || !clone.providerVoiceId) throw new Error("That voice isn't ready yet.");
+  const audio = clone.provider === "elevenlabs" ? await ttsElevenLabs(clone.providerVoiceId, text) : await ttsChatterbox(clone.providerVoiceId, text);
+  return { ...audio, provider: clone.provider };
+}
+
 export async function renderVoiceJob(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
   const db = await getDb();
   const draftId = String(payload.draftId);
@@ -86,12 +95,10 @@ export async function renderVoiceJob(payload: Record<string, unknown>): Promise<
   if (!draft) throw new Error("draft not found");
   try {
     if (!draft.voiceCloneId) throw new Error("Pick a voice for this draft.");
-    const [clone] = await db.select().from(schema.voiceClones).where(eq(schema.voiceClones.id, draft.voiceCloneId));
-    if (!clone || clone.status !== "ready" || !clone.providerVoiceId) throw new Error("That voice isn't ready yet.");
-    const audio = clone.provider === "elevenlabs" ? await ttsElevenLabs(clone.providerVoiceId, draft.script) : await ttsChatterbox(clone.providerVoiceId, draft.script);
+    const audio = await speakWithClone(draft.voiceCloneId, draft.script);
     const file = await putFile(audio.data, `voice-draft-${draftId.slice(0, 8)}.${audio.ext}`, audio.mime);
     await db.update(schema.voiceDrafts).set({ audioFileId: file.id, status: "draft" }).where(eq(schema.voiceDrafts.id, draftId));
-    return { audioFileId: file.id, provider: clone.provider };
+    return { audioFileId: file.id, provider: audio.provider };
   } catch (e) {
     await db.update(schema.voiceDrafts).set({ status: "failed" }).where(eq(schema.voiceDrafts.id, draftId));
     throw e;

@@ -69,6 +69,7 @@ export default async function SettingsPage() {
             <Field label="Tagline"><Input name="tagline" defaultValue={s.brandKit.tagline} /></Field>
             <Field label="Email signature"><Textarea name="signature" defaultValue={s.brandKit.signature} className="font-serif" /></Field>
             <Field label="How Pamela sounds (used by every model)"><Textarea name="voiceNotes" defaultValue={s.brandKit.voiceNotes} /></Field>
+            <Field label="How her images look (Create studio art direction)"><Textarea name="visualStyle" defaultValue={s.brandKit.visualStyle} /></Field>
             <Field label="Banned phrases (one per line)"><Textarea name="bannedPhrases" defaultValue={s.brandKit.bannedPhrases.join("\n")} className="min-h-16" /></Field>
             <div className="grid grid-cols-2 gap-2">
               <Field label="Email from name"><Input name="fromName" defaultValue={s.emailFrom.name} /></Field>

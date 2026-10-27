@@ -15,6 +15,13 @@
       "when": 1792701144918,
       "tag": "0001_command_center",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793142723257,
+      "tag": "0002_studio_canvas",
+      "breakpoints": true
     }
   ]
 }
