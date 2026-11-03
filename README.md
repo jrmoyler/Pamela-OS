@@ -192,6 +192,10 @@ The `/api/mcp/k/<key>` form exists because claude.ai and ChatGPT connector scree
 - **pull**: Hermes, connected with a Hermes key, calls `next_computer_task` on a schedule (for example, a Hermes cron every 2 minutes), does the work, pushes files with `push_file` + `computerTaskId`, then calls `finish_computer_task`. Use this when Hermes runs on her laptop with no inbound access.
 - **auto** (default) uses push when Hermes is connected, otherwise pull.
 
+**She approves computer use inside Pamela OS.** Requests to use her computer show up in **Approvals → Computer use** (and at the top of the Command Center), and they count toward the sidebar badge and the Today stat. There are two layers:
+- **Starting a task.** In **Command Center → Computer access**, each connector (RJ, and every agent key with the `computer` permission: Hermes, Claude, ChatGPT, Meta Muse, others) gets *Ask me each time* (default), *Always allow* or *Never*, plus which kinds of work it may ask for (browser, computer, files). She can also trust a connector for 1 hour, 4 hours or the rest of the day, either from that card or with *Approve + trust* on a request. Agents can check their access with the `computer_access` tool.
+- **Checkpoints during a task.** Before signing in, submitting a form, downloading or uploading, installing, deleting or moving files, changing a setting, or opening something the task didn't mention, Hermes calls `request_permission` and polls `check_permission`. She allows or denies that one step with an optional note, which goes back to Hermes. Unanswered checkpoints lapse after 30 minutes, and cancelling a task denies its open checkpoints. Sending, posting, paying and messaging people stay off-limits for Hermes no matter what she approves. Those go through Approvals.
+
 ---
 
 ## Security notes

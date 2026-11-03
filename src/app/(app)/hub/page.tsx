@@ -11,12 +11,13 @@ import { KIND_LABELS, type ComputerKind } from "@/lib/hub/computer";
 import { contactName } from "@/lib/crm";
 import { PageHeader, Card, CardHeader, Badge, Button, Input, Select, Textarea, EmptyState, Stat, statusTone } from "@/components/ui";
 import { AskModel } from "@/components/hub/AskModel";
+import { ComputerApprovals } from "@/components/hub/ComputerApprovals";
+import { ComputerAccess } from "@/components/hub/ComputerAccess";
 import { fmtDate, timeAgo } from "@/lib/utils";
 import {
   askModel,
   saveAnswerToInbox,
   queueComputerTask,
-  approveTask,
   cancelTask,
   retryTask,
   setComputerMode,
@@ -81,6 +82,10 @@ export default async function HubPage({ searchParams }: { searchParams: Promise<
   const taskFileIds = [...new Set(tasks.flatMap((t) => t.fileIds))];
   const taskFiles = taskFileIds.length ? await db.select().from(schema.files).where(inArray(schema.files.id, taskFileIds)) : [];
   const fileName = new Map(taskFiles.map((f) => [f.id, f.name]));
+  const taskIds = tasks.map((t) => t.id);
+  const steps = taskIds.length
+    ? await db.select().from(schema.computerPermissions).where(inArray(schema.computerPermissions.taskId, taskIds)).orderBy(desc(schema.computerPermissions.createdAt))
+    : [];
   const activeTasks = tasks.filter((t) => ["awaiting_approval", "queued", "running"].includes(t.status)).length;
   const effectiveMode = mode === "auto" ? (status.HERMES_BASE_URL ? "push" : "pull") : mode;
   const providers = (Object.keys(PROVIDER_LABELS) as ProviderId[]).map((id) => ({ id, label: PROVIDER_LABELS[id], connected: !!status[PROVIDER_SECRET[id]] }));
@@ -108,6 +113,7 @@ export default async function HubPage({ searchParams }: { searchParams: Promise<
 
       <div className="grid gap-6 lg:grid-cols-5">
         <div className="space-y-6 lg:col-span-3">
+          <ComputerApprovals />
           <Card id="inbox">
             <CardHeader
               title="Inbox"
@@ -190,7 +196,7 @@ export default async function HubPage({ searchParams }: { searchParams: Promise<
                 </Select>
                 <Button><MonitorSmartphone className="h-4 w-4" /> Send to Hermes</Button>
               </div>
-              <p className="text-xs text-zinc-500">Hermes never sends, posts or pays from your computer. Requests from RJ or another agent wait here for your yes.</p>
+              <p className="text-xs text-zinc-500">Hermes never sends, posts or pays from your computer, and asks you before signing in, submitting, installing or deleting. Requests from RJ or another agent follow the <a href="#access" className="text-brand underline">access you set</a>.</p>
             </form>
             {tasks.length === 0 ? (
               <p className="p-4 text-sm text-zinc-500">No computer tasks yet.</p>
@@ -202,11 +208,23 @@ export default async function HubPage({ searchParams }: { searchParams: Promise<
                       <Badge tone={t.status === "awaiting_approval" ? "amber" : statusTone(t.status)}>{t.status.replace("_", " ")}</Badge>
                       <Badge>{KIND_LABELS[t.kind as ComputerKind] ?? t.kind}</Badge>
                       {t.createdBy !== "user" && <Badge tone="blue">from {SOURCE_LABELS[t.createdBy] ?? t.createdBy}</Badge>}
+                      {t.approvedVia && t.approvedVia !== "user" && <Badge tone="green">{{ approved: "you approved", allowed: "always allowed", trusted: "trusted" }[t.approvedVia] ?? t.approvedVia}</Badge>}
                       <span className="ml-auto text-xs text-zinc-400">{fmtDate(t.createdAt, tz)}</span>
                     </div>
                     <p className="text-sm text-brand-ink">{t.instruction}</p>
                     {t.result && <p className="whitespace-pre-wrap rounded-lg bg-zinc-50 p-2 text-sm text-zinc-700">{t.result}</p>}
                     {t.error && <p className="text-sm text-red-600">{t.error}</p>}
+                    {steps.filter((p) => p.taskId === t.id).length > 0 && (
+                      <ul className="space-y-0.5 rounded-lg border border-zinc-100 p-2 text-xs">
+                        {steps.filter((p) => p.taskId === t.id).map((p) => (
+                          <li key={p.id} className="flex flex-wrap items-center gap-2">
+                            <Badge tone={p.status === "pending" ? "amber" : p.status === "approved" ? "green" : "red"}>{p.status === "pending" ? "asking you" : p.status}</Badge>
+                            <span className="text-zinc-700">{p.action}</span>
+                            {p.note && <span className="text-zinc-400">· “{p.note}”</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                     {t.fileIds.length > 0 && (
                       <div className="flex flex-wrap gap-2 text-sm">
                         {t.fileIds.map((id) => (
@@ -215,7 +233,7 @@ export default async function HubPage({ searchParams }: { searchParams: Promise<
                       </div>
                     )}
                     <div className="flex gap-2">
-                      {t.status === "awaiting_approval" && <form action={approveTask.bind(null, t.id)}><Button size="sm">Approve</Button></form>}
+                      {t.status === "awaiting_approval" && <a href="#computer-use" className="text-xs font-medium text-amber-700 underline">Waiting for your yes above</a>}
                       {["awaiting_approval", "queued", "running"].includes(t.status) && <form action={cancelTask.bind(null, t.id)}><Button size="sm" variant="ghost">Cancel</Button></form>}
                       {["failed", "cancelled"].includes(t.status) && <form action={retryTask.bind(null, t.id)}><Button size="sm" variant="outline">Retry</Button></form>}
                     </div>
@@ -227,6 +245,8 @@ export default async function HubPage({ searchParams }: { searchParams: Promise<
         </div>
 
         <div className="space-y-6 lg:col-span-2">
+          <ComputerAccess />
+
           <Card>
             <CardHeader title="Ask a model" subtitle="Talk to any of your models directly. RJ (in the sidebar) is the one that works across your data." />
             <AskModel providers={providers} ask={askModel} save={saveAnswerToInbox} />

@@ -4,6 +4,7 @@ import { emit } from "../events";
 import { getSecret, getSetting } from "../settings";
 import { enqueue } from "../jobs";
 import { BRAND } from "../brand";
+import { accessFor, computerGate, denyOpenPermissions, PERMISSION_CATEGORIES, PERMISSION_TTL_MIN } from "./access";
 
 /**
  * The bridge to Hermes Agent, which runs with access to Pamela's computer and
@@ -15,8 +16,10 @@ import { BRAND } from "../brand";
  *    `next_computer_task` and reports back with `finish_computer_task`
  *    (works when Hermes runs on her laptop with no inbound access).
  *
- * Tasks asked for by an agent (RJ, Claude, ChatGPT, Meta Muse) wait for her yes
- * first; tasks she types herself go straight to the queue.
+ * Tasks she types herself go straight to the queue. Tasks asked for by an
+ * agent (RJ, Claude, ChatGPT, Meta Muse, Hermes itself) follow that agent's
+ * computer access (see ./access): wait for her yes, start right away, or be
+ * refused. Sensitive steps inside a task are checkpointed with request_permission.
  */
 
 export type ComputerTask = typeof schema.computerTasks.$inferSelect;
@@ -31,8 +34,9 @@ export const KIND_LABELS: Record<ComputerKind, string> = {
 /** Ground rules sent with every task, whichever way it reaches Hermes. */
 export const COMPUTER_RULES = [
   `You are working on Pamela's own computer and browser for ${BRAND.name}, on a task she (or her operator) queued in Pamela OS.`,
-  "Never send, post, publish, pay, sign, buy or delete anything, and never message another person. If the task needs that, stop and say so: Pamela approves outbound actions inside Pamela OS.",
+  "Never send, post, publish, pay, sign, buy or order anything, and never message another person. If the task needs that, stop and say so: Pamela approves outbound actions inside Pamela OS.",
   "Never type or reveal passwords, government ID numbers or card numbers.",
+  `Ask first, inside Pamela OS, before any sensitive step: ${Object.values(PERMISSION_CATEGORIES).slice(0, -1).join(", ").toLowerCase()}, or anything the task didn't clearly ask for. Call request_permission with this task's id and a plain description of the one step, then call check_permission about every 20 seconds until it says approved, denied or expired (it lapses after ${PERMISSION_TTL_MIN} minutes). Approved: do only that step. Denied or expired: skip it, don't find a way around it, and say so in your summary.`,
   "When you produce or download files Pamela should keep, send them to Pamela OS with the push_file tool and include this task's id as computerTaskId.",
   "Finish with a short plain summary of what you did and what you found.",
 ].join("\n");
@@ -43,13 +47,25 @@ async function computerMode(): Promise<"push" | "pull"> {
   return (await getSecret("HERMES_BASE_URL")) ? "push" : "pull";
 }
 
-export async function createComputerTask(instruction: string, kind: ComputerKind = "browser", createdBy = "user") {
+export async function createComputerTask(instruction: string, kind: ComputerKind = "browser", createdBy = "user", agentKeyId: string | null = null) {
   const text = instruction.trim();
   if (!text) throw new Error("Tell Hermes what to do.");
+  const access = await accessFor(createdBy, agentKeyId);
+  const gate = access ? computerGate(access, kind) : { decision: "queue" as const, via: "user" as const };
+  if (gate.decision === "block") throw new Error(gate.reason);
+  const queued = gate.decision === "queue";
   const db = await getDb();
   const [task] = await db
     .insert(schema.computerTasks)
-    .values({ instruction: text.slice(0, 4000), kind, createdBy, status: createdBy === "user" ? "queued" : "awaiting_approval" })
+    .values({
+      instruction: text.slice(0, 4000),
+      kind,
+      createdBy,
+      agentKeyId,
+      status: queued ? "queued" : "awaiting_approval",
+      approvedVia: queued ? gate.via : null,
+      approvedAt: queued ? new Date() : null,
+    })
     .returning();
   await emit("computer.task_created", { taskId: task.id, kind, createdBy, status: task.status }, createdBy);
   if (task.status === "queued") await dispatch(task);
@@ -64,19 +80,27 @@ export async function approveComputerTask(id: string) {
   const db = await getDb();
   const [task] = await db
     .update(schema.computerTasks)
-    .set({ status: "queued" })
+    .set({ status: "queued", approvedVia: "approved", approvedAt: new Date() })
     .where(and(eq(schema.computerTasks.id, id), eq(schema.computerTasks.status, "awaiting_approval")))
     .returning();
-  if (task) await dispatch(task);
+  if (task) {
+    await emit("computer.task_approved", { taskId: task.id, createdBy: task.createdBy }, "user");
+    await dispatch(task);
+  }
   return task ?? null;
 }
 
-export async function cancelComputerTask(id: string) {
+/** "Deny" on a request and "Cancel" on a queued or running task both land here. */
+export async function cancelComputerTask(id: string, reason?: string) {
   const db = await getDb();
-  await db
+  const [task] = await db
     .update(schema.computerTasks)
-    .set({ status: "cancelled", finishedAt: new Date() })
-    .where(and(eq(schema.computerTasks.id, id), inArray(schema.computerTasks.status, ["awaiting_approval", "queued", "running"])));
+    .set({ status: "cancelled", finishedAt: new Date(), ...(reason ? { error: reason } : {}) })
+    .where(and(eq(schema.computerTasks.id, id), inArray(schema.computerTasks.status, ["awaiting_approval", "queued", "running"])))
+    .returning();
+  await denyOpenPermissions(id);
+  if (task) await emit("computer.task_cancelled", { taskId: id, reason: reason ?? null }, "user");
+  return task ?? null;
 }
 
 /** Puts a finished or failed task back in the queue. */

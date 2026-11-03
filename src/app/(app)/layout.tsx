@@ -4,6 +4,7 @@ import { LogOut, Search, FlaskConical } from "lucide-react";
 import { requireSession } from "@/lib/auth";
 import { getDb, schema } from "@/lib/db";
 import { getSetting } from "@/lib/settings";
+import { pendingComputerCount } from "@/lib/hub/access";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { Dictation } from "@/components/shell/Dictation";
 import { PwaInstall, Heartbeat } from "@/components/shell/Pwa";
@@ -15,10 +16,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const db = await getDb();
   const [{ value: pending }] = await db.select({ value: count() }).from(schema.approvals).where(eq(schema.approvals.status, "pending"));
   const mode = await getSetting("deliveryMode");
+  // Requests to use her computer count as approvals too, so the badge shows them wherever she is.
+  const computerWaiting = await pendingComputerCount();
 
   return (
     <div className="min-h-screen">
-      <Sidebar pendingApprovals={Number(pending)} />
+      <Sidebar pendingApprovals={Number(pending) + computerWaiting} />
       <div className="lg:pl-60">
         {/* Visible on phones too: search, install, sandbox notice and sign-out live only here. */}
         <header className="z-20 flex items-center gap-3 border-b border-zinc-200 bg-white/90 px-4 py-2.5 backdrop-blur lg:sticky lg:top-0 lg:px-6">

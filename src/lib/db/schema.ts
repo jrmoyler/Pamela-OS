@@ -53,6 +53,12 @@ export const agentKeys = pgTable("agent_keys", {
   tokenHash: text("token_hash").notNull().unique(),
   tokenPrefix: text("token_prefix").notNull(),
   scopes: text("scopes").array().notNull().default([]), // read | write | computer
+  /** Whether this agent's computer tasks need her yes: ask (default) | allow (start right away) | block (refused). */
+  computerPolicy: text("computer_policy").notNull().default("ask"),
+  /** Which kinds of computer work this agent may ask for: browser | computer | files. */
+  computerKinds: text("computer_kinds").array().notNull().default(["browser", "computer", "files"]),
+  /** "Trust for a while": until this time its tasks start without asking, then it goes back to asking. */
+  computerTrustUntil: ts("computer_trust_until"),
   lastUsedAt: ts("last_used_at"),
   revokedAt: ts("revoked_at"),
   createdAt: createdAt(),
@@ -87,6 +93,11 @@ export const computerTasks = pgTable(
     kind: text("kind").notNull().default("browser"), // browser | computer | files
     status: text("status").notNull().default("queued"), // awaiting_approval | queued | running | done | failed | cancelled
     createdBy: text("created_by").notNull().default("user"), // user | rj | claude | chatgpt | meta | other
+    /** The agent key that asked for this task (null for Pamela herself and RJ). */
+    agentKeyId: uuid("agent_key_id").references(() => agentKeys.id, { onDelete: "set null" }),
+    /** How it got its yes: user (she typed it) | approved (she said yes) | allowed (agent is always allowed) | trusted (agent trusted for a while). */
+    approvedVia: text("approved_via"),
+    approvedAt: ts("approved_at"),
     claimedBy: text("claimed_by"), // push (sent to the Hermes API) | pull (Hermes fetched it over MCP)
     result: text("result"),
     fileIds: jsonb("file_ids").$type<string[]>().notNull().default([]),
@@ -96,6 +107,30 @@ export const computerTasks = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("computer_tasks_status_idx").on(t.status, t.createdAt)],
+);
+
+/**
+ * Mid-task checkpoints: Hermes stops before a sensitive step (signing in,
+ * submitting a form, installing, deleting) and asks; she answers in Pamela OS.
+ */
+export const computerPermissions = pgTable(
+  "computer_permissions",
+  {
+    id: id(),
+    taskId: uuid("task_id").references(() => computerTasks.id, { onDelete: "cascade" }),
+    agentKeyId: uuid("agent_key_id").references(() => agentKeys.id, { onDelete: "set null" }),
+    requestedBy: text("requested_by").notNull().default("hermes"),
+    category: text("category").notNull().default("other"), // sign_in | submit_form | download | upload | install | delete | open_app | settings | other
+    action: text("action").notNull(),
+    detail: text("detail"),
+    url: text("url"),
+    status: text("status").notNull().default("pending"), // pending | approved | denied | expired
+    note: text("note"), // her reply, passed back to the agent
+    decidedAt: ts("decided_at"),
+    expiresAt: ts("expires_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("computer_permissions_status_idx").on(t.status, t.createdAt), index("computer_permissions_task_idx").on(t.taskId)],
 );
 
 /* ───────────────────────────── CRM ───────────────────────────── */

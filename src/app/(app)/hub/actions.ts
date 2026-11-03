@@ -7,12 +7,33 @@ import { requireSession } from "@/lib/auth";
 import { complete, PROVIDER_LABELS, type ProviderId } from "@/lib/ai";
 import { herVoiceSystem } from "@/lib/rj/voice";
 import { runTool } from "@/lib/rj/tools";
-import { setSetting } from "@/lib/settings";
+import { getSetting, setSetting } from "@/lib/settings";
 import { appUrl, isLocalUrl, requestAppUrl } from "@/lib/outbound";
 import { AGENT_CLIENTS, createAgentKey, revokeAgentKey, type AgentClient, type Scope } from "@/lib/hub/keys";
 import { addInboxItem, setInboxStatus, SOURCE_LABELS } from "@/lib/hub/inbox";
 import { logActivity } from "@/lib/crm";
 import { approveComputerTask, cancelComputerTask, createComputerTask, retryComputerTask, type ComputerKind } from "@/lib/hub/computer";
+import {
+  COMPUTER_KINDS,
+  COMPUTER_POLICIES,
+  decidePermission,
+  requesterOf,
+  setAccess,
+  trustUntil,
+  TRUST_WINDOWS,
+  type ComputerPolicy,
+  type Requester,
+  type TrustWindow,
+} from "@/lib/hub/access";
+
+/** Approving a computer request changes counts on the Command Center, Approvals and the sidebar badge. */
+function refreshComputer() {
+  revalidatePath("/hub");
+  revalidatePath("/approvals");
+  revalidatePath("/", "layout");
+}
+
+const requester = (who: string): Requester => (who === "rj" ? { kind: "rj" } : { kind: "key", id: who });
 
 const PROVIDERS: ProviderId[] = ["hermes", "meta", "anthropic", "openai", "gemini"];
 
@@ -74,25 +95,70 @@ export async function queueComputerTask(form: FormData) {
   await requireSession();
   const kind = (["browser", "computer", "files"].includes(String(form.get("kind"))) ? String(form.get("kind")) : "browser") as ComputerKind;
   await createComputerTask(String(form.get("instruction") ?? ""), kind, "user");
-  revalidatePath("/hub");
+  refreshComputer();
 }
 
-export async function approveTask(id: string) {
+/** Approve one request; with a trust window, the same agent's next tasks start without asking until it ends. */
+export async function approveTask(id: string, trust?: TrustWindow) {
   await requireSession();
-  await approveComputerTask(id);
-  revalidatePath("/hub");
+  const task = await approveComputerTask(id);
+  if (task && trust && trust in TRUST_WINDOWS) {
+    const who = requesterOf(task);
+    if (who) await setAccess(who, { trustUntil: trustUntil(trust, new Date(), await getSetting("timezone")) });
+  }
+  refreshComputer();
+}
+
+export async function denyTask(id: string, form?: FormData) {
+  await requireSession();
+  const note = String(form?.get("note") ?? "").trim();
+  await cancelComputerTask(id, note ? `Pamela said no: ${note}` : "Pamela said no.");
+  refreshComputer();
 }
 
 export async function cancelTask(id: string) {
   await requireSession();
   await cancelComputerTask(id);
-  revalidatePath("/hub");
+  refreshComputer();
+}
+
+/** Answers a checkpoint Hermes raised in the middle of a task. */
+export async function answerStep(id: string, approve: boolean, form?: FormData) {
+  await requireSession();
+  await decidePermission(id, approve, String(form?.get("note") ?? ""));
+  refreshComputer();
+}
+
+/** Saves one connector's computer access: ask / allow / block, and which kinds of work. */
+export async function saveAccess(who: string, form: FormData) {
+  await requireSession();
+  const policy = String(form.get("policy"));
+  const kinds = form.getAll("kinds").map(String).filter((k) => (COMPUTER_KINDS as readonly string[]).includes(k));
+  await setAccess(requester(who), {
+    policy: (COMPUTER_POLICIES as string[]).includes(policy) ? (policy as ComputerPolicy) : undefined,
+    kinds,
+    // Switching to "never" also ends any trust window.
+    ...(policy === "block" ? { trustUntil: null } : {}),
+  });
+  refreshComputer();
+}
+
+export async function trustAgent(who: string, window: TrustWindow) {
+  await requireSession();
+  await setAccess(requester(who), { trustUntil: trustUntil(window, new Date(), await getSetting("timezone")) });
+  refreshComputer();
+}
+
+export async function endTrust(who: string) {
+  await requireSession();
+  await setAccess(requester(who), { trustUntil: null });
+  refreshComputer();
 }
 
 export async function retryTask(id: string) {
   await requireSession();
   await retryComputerTask(id);
-  revalidatePath("/hub");
+  refreshComputer();
 }
 
 export async function setComputerMode(mode: "auto" | "push" | "pull") {

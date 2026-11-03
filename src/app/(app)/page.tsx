@@ -11,6 +11,7 @@ import { TaskCheck } from "@/components/work/TaskCheck";
 import { fmtDate, miniMarkdown, timeAgo } from "@/lib/utils";
 import { toggleTask, createTask } from "./work/actions";
 import { refreshBriefing } from "./rj/actions";
+import { pendingComputerCount } from "@/lib/hub/access";
 
 export const metadata = { title: "Today" };
 
@@ -23,6 +24,7 @@ export default async function TodayPage() {
   const today = dayBounds(now, tz);
   const week = weekBounds(now, tz);
   const since7 = new Date(now.getTime() - 7 * 86_400_000);
+  const computerWaiting = await pendingComputerCount();
 
   const [[briefing], [{ value: pending }], dueWeek, bookings, calls, [{ value: leads7 }], [{ value: openDeals }], failedRuns, recent] = await Promise.all([
     db.select().from(schema.briefings).where(eq(schema.briefings.date, localDateKey(now, tz))),
@@ -71,7 +73,7 @@ export default async function TodayPage() {
       </div>
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Waiting for your yes" value={Number(pending)} href="/approvals" hint="drafts & sends" />
+        <Stat label="Waiting for your yes" value={Number(pending) + computerWaiting} href="/approvals" hint={computerWaiting ? `drafts, sends & ${computerWaiting} computer request${computerWaiting === 1 ? "" : "s"}` : "drafts & sends"} />
         <Stat label="Due this week" value={dueWeek.length} href="/work" hint={overdue ? `${overdue} overdue` : "on track"} />
         <Stat label="New people (7 days)" value={Number(leads7)} href="/contacts" />
         <Stat label="Open deals" value={Number(openDeals)} href="/pipelines" />

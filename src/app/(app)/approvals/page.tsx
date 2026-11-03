@@ -9,6 +9,8 @@ import { PageHeader, Card, Badge, Button, Input, Textarea, Tabs, EmptyState, sta
 import { fmtDate, timeAgo } from "@/lib/utils";
 import { fileUrl } from "@/lib/storage";
 import { approveItem, rejectItem, saveItem, fixBrand, retryItem } from "./actions";
+import { ComputerApprovals } from "@/components/hub/ComputerApprovals";
+import { pendingComputerCount } from "@/lib/hub/access";
 
 export const metadata = { title: "Approvals" };
 
@@ -37,6 +39,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
     .limit(200);
   const all = await db.select({ status: schema.approvals.status }).from(schema.approvals);
   const n = (s: string[]) => all.filter((x) => s.includes(x.status)).length;
+  const computerWaiting = await pendingComputerCount();
 
   // Media previews for posts that reference stored files.
   const postIds = rows.filter((r) => r.a.kind === "social_post").map((r) => String(r.a.payload.socialPostId));
@@ -48,7 +51,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
         title="Approvals"
         subtitle={
           <>
-            Every email, text, DM, post, payment request, release and voice message waits here for your yes.
+            Every email, text, DM, post, payment request, release and voice message waits here for your yes, and so does every request to use your computer.
             {mode === "sandbox" && <span className="ml-1 font-medium text-amber-700">Sandbox delivery is on — approved items are recorded, not delivered.</span>}
           </>
         }
@@ -56,14 +59,19 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
       <Tabs
         active={`/approvals?tab=${tab}`}
         tabs={[
-          { href: "/approvals?tab=pending", label: "Waiting", count: n(["pending"]) },
+          { href: "/approvals?tab=pending", label: "Waiting", count: n(["pending"]) + computerWaiting },
           { href: "/approvals?tab=scheduled", label: "Scheduled", count: n(["approved"]) },
           { href: "/approvals?tab=failed", label: "Failed", count: n(["failed"]) },
           { href: "/approvals?tab=history", label: "History" },
         ]}
       />
+      {tab === "pending" && computerWaiting > 0 && (
+        <div className="mb-4">
+          <ComputerApprovals />
+        </div>
+      )}
       {rows.length === 0 ? (
-        <EmptyState icon={<CheckCircle2 className="h-8 w-8" />} title={tab === "pending" ? "All clear" : "Nothing here"}>
+        tab === "pending" && computerWaiting > 0 ? null : <EmptyState icon={<CheckCircle2 className="h-8 w-8" />} title={tab === "pending" ? "All clear" : "Nothing here"}>
           {tab === "pending" ? "When RJ, automations, sequences or the receptionist draft something, it lands here first." : null}
         </EmptyState>
       ) : (
