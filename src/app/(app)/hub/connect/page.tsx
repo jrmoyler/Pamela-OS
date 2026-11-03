@@ -3,7 +3,8 @@ import { desc } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import { requestAppUrl } from "@/lib/outbound";
-import { CLIENT_LABELS, SCOPE_LABELS, type AgentClient, type Scope } from "@/lib/hub/keys";
+import { CLIENT_LABELS, SCOPE_LABELS, hasScope, type AgentClient, type Scope } from "@/lib/hub/keys";
+import { keyAccess, POLICY_LABELS } from "@/lib/hub/access";
 import { PageHeader, Card, CardHeader, Badge, Button } from "@/components/ui";
 import { KeyMaker } from "@/components/hub/KeyMaker";
 import { timeAgo } from "@/lib/utils";
@@ -34,7 +35,7 @@ export default async function ConnectPage() {
             <CardHeader title="How it works" />
             <div className="space-y-2 p-4 text-sm text-zinc-700">
               <p>Pamela OS is an <b>MCP server</b> at <code className="break-all text-xs">{base}/api/mcp</code>. Agents that speak MCP (Claude, ChatGPT, Hermes) get tools to push files and notes, look up contacts, tasks, calendar and files, add tasks and draft messages.</p>
-              <p>Anything an agent drafts to another person waits in <Link href="/approvals" className="text-brand underline">Approvals</Link>. Requests to use your computer wait in the <Link href="/hub#computer" className="text-brand underline">Command Center</Link>.</p>
+              <p>Anything an agent drafts to another person waits in <Link href="/approvals" className="text-brand underline">Approvals</Link>. Requests to use your computer follow the <Link href="/hub#access" className="text-brand underline">computer access</Link> you set for each agent, and wait for your yes in <Link href="/approvals" className="text-brand underline">Approvals</Link>. Hermes also asks there before signing in, submitting, installing or deleting.</p>
               <p>Apps that can&apos;t speak MCP (Meta Muse actions, phone shortcuts, Zapier) can post to <code className="break-all text-xs">{base}/api/inbox</code> with the key.</p>
             </div>
           </Card>
@@ -53,6 +54,11 @@ export default async function ConnectPage() {
                       <code className="ml-auto text-xs text-zinc-400">{k.tokenPrefix}…</code>
                     </div>
                     <p className="text-xs text-zinc-500">{k.scopes.map((s) => SCOPE_LABELS[s as Scope] ?? s).join(" · ")}</p>
+                    {hasScope(k, "computer") && !k.revokedAt && (
+                      <p className="text-xs">
+                        Computer: <Link href="/hub#access" className="text-brand underline">{POLICY_LABELS[keyAccess(k).policy]}</Link>
+                      </p>
+                    )}
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-zinc-400">{k.lastUsedAt ? `Last used ${timeAgo(k.lastUsedAt)}` : "Never used"}</span>
                       {!k.revokedAt && (

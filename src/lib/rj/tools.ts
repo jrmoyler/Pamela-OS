@@ -594,7 +594,7 @@ export const RJ_TOOLS: RjTool[] = [
   {
     name: "request_computer_task",
     description:
-      "Ask Hermes to do something on Pamela's computer or in her browser (look something up on a site she's logged into, download a document, organise files). It waits in the Command Center for her yes before Hermes starts. Hermes never sends, posts or pays.",
+      "Ask Hermes to do something on Pamela's computer or in her browser (look something up on a site she's logged into, download a document, organise files). Unless Pamela has trusted RJ with her computer, it waits for her yes in Approvals → Computer use. Hermes never sends, posts or pays.",
     parameters: {
       type: "object",
       properties: { instruction: { type: "string" }, kind: { type: "string", enum: ["browser", "computer", "files"] } },
@@ -604,7 +604,11 @@ export const RJ_TOOLS: RjTool[] = [
       const { createComputerTask } = await import("../hub/computer");
       const kind = ["browser", "computer", "files"].includes(str(a.kind)) ? (str(a.kind) as "browser") : "browser";
       const t = await createComputerTask(str(a.instruction), kind, "rj");
-      return { taskId: t.id, status: t.status, note: "Waiting for Pamela's approval in the Command Center." };
+      return {
+        taskId: t.id,
+        status: t.status,
+        note: t.status === "awaiting_approval" ? "Waiting for Pamela's approval in Approvals → Computer use." : "Queued for Hermes under the access Pamela gave RJ.",
+      };
     },
   },
 ];

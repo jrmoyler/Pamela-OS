@@ -37,6 +37,12 @@ export const EVENT_CATALOG: { type: string; label: string; fields: string[] }[] 
   { type: "computer.task_created", label: "Computer task queued for Hermes", fields: ["taskId", "kind", "createdBy", "status"] },
   { type: "computer.task_done", label: "Hermes finished a computer task", fields: ["taskId", "fileIds"] },
   { type: "computer.task_failed", label: "Hermes computer task failed", fields: ["taskId", "error"] },
+  { type: "computer.task_approved", label: "You approved a computer task", fields: ["taskId", "createdBy"] },
+  { type: "computer.task_cancelled", label: "Computer task denied or cancelled", fields: ["taskId", "reason"] },
+  { type: "computer.permission_requested", label: "Hermes asked permission for a step", fields: ["permissionId", "taskId", "category", "action"] },
+  { type: "computer.permission_approved", label: "You allowed a Hermes step", fields: ["permissionId", "taskId", "note"] },
+  { type: "computer.permission_denied", label: "You denied a Hermes step", fields: ["permissionId", "taskId", "note"] },
+  { type: "computer.access_changed", label: "Computer access changed for an agent", fields: ["who", "policy", "kinds", "trustUntil"] },
 ];
 
 export type EventRow = typeof schema.events.$inferSelect;

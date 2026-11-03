@@ -18,6 +18,8 @@ export type SettingsShape = {
   emailFrom: { name: string; address: string };
   /** How computer tasks reach Hermes: push = call the Hermes API now; pull = Hermes picks them up over MCP; auto = push when Hermes is connected. */
   computerMode: "auto" | "push" | "pull";
+  /** Computer-use rules for RJ, who has no agent key (outside agents keep theirs on the key). */
+  computerAccess: { rj: { policy: "ask" | "allow" | "block"; kinds: string[]; trustUntil: string | null } };
   /** Create studio: preferred engine and model per capability, and ComfyUI workflows she pasted in. */
   studio: {
     engines: Partial<Record<Capability, "auto" | "comfyui" | "replicate" | "fal">>;
@@ -50,6 +52,7 @@ export const DEFAULT_SETTINGS: SettingsShape = {
   },
   emailFrom: { name: `Pamela | ${BRAND.name}`, address: "pamela@acupofcompassion.com" },
   computerMode: "auto",
+  computerAccess: { rj: { policy: "ask", kinds: ["browser", "computer", "files"], trustUntil: null } },
   studio: { engines: {}, models: {}, comfyWorkflows: {} },
 };
 

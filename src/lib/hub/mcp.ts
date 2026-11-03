@@ -8,6 +8,7 @@ import { signedMediaUrl } from "../outbound";
 import { CLIENT_LABELS, hasScope, type AgentClient, type AgentKey, type Scope } from "./keys";
 import { addInboxItem, pushFile } from "./inbox";
 import { claimNextComputerTask, createComputerTask, finishComputerTask, COMPUTER_RULES, type ComputerKind } from "./computer";
+import { computerGate, getPermission, keyAccess, permissionReply, requestPermission, PERMISSION_CATEGORIES, POLICY_LABELS } from "./access";
 
 /**
  * Pamela OS as an MCP server (Streamable HTTP, JSON responses). Claude, ChatGPT,
@@ -146,7 +147,7 @@ const HUB_TOOLS: Tool[] = [
     name: "request_computer_task",
     scope: "computer",
     description:
-      "Ask Hermes Agent to do something on Pamela's computer or in her browser. Your request waits in her Command Center for her approval before Hermes starts. Hermes never sends, posts or pays.",
+      "Ask Hermes Agent to do something on Pamela's computer or in her browser. Depending on the access Pamela gave you, it starts right away or waits for her yes in Pamela OS (check with computer_task_status or computer_access). Hermes never sends, posts or pays.",
     inputSchema: {
       type: "object",
       properties: { instruction: { type: "string" }, kind: { type: "string", enum: ["browser", "computer", "files"] } },
@@ -155,8 +156,28 @@ const HUB_TOOLS: Tool[] = [
     async run(a, key) {
       const kind = (["browser", "computer", "files"].includes(str(a.kind)) ? str(a.kind) : "browser") as ComputerKind;
       // A task Hermes queues for itself is still an agent's request, so it waits for her yes too.
-      const t = await createComputerTask(str(a.instruction), kind, sourceOf(key));
-      return { taskId: t.id, status: t.status };
+      const t = await createComputerTask(str(a.instruction), kind, sourceOf(key), key.id);
+      return {
+        taskId: t.id,
+        status: t.status,
+        note: t.status === "awaiting_approval" ? "Waiting for Pamela's approval in Pamela OS (Approvals → Computer use)." : "Approved by the access Pamela gave you; Hermes will pick it up.",
+      };
+    },
+  },
+  {
+    name: "computer_access",
+    scope: "computer",
+    description: "What computer access Pamela has given you: whether your tasks need her yes, which kinds you may ask for, and any trust window.",
+    inputSchema: { type: "object", properties: {} },
+    async run(_a, key) {
+      const access = keyAccess(key);
+      return {
+        policy: access.policy,
+        policyLabel: POLICY_LABELS[access.policy],
+        kinds: access.kinds,
+        trustedUntil: access.trustUntil && access.trustUntil > new Date() ? access.trustUntil.toISOString() : null,
+        nextBrowserTask: computerGate(access, "browser").decision,
+      };
     },
   },
   {
@@ -170,7 +191,7 @@ const HUB_TOOLS: Tool[] = [
       const rows = /^[0-9a-f-]{36}$/i.test(id)
         ? await db.select().from(schema.computerTasks).where(eq(schema.computerTasks.id, id))
         : await db.select().from(schema.computerTasks).orderBy(desc(schema.computerTasks.createdAt)).limit(10);
-      return rows.map((t) => ({ id: t.id, instruction: t.instruction, kind: t.kind, status: t.status, result: t.result, error: t.error, fileIds: t.fileIds }));
+      return rows.map((t) => ({ id: t.id, instruction: t.instruction, kind: t.kind, status: t.status, approvedVia: t.approvedVia, result: t.result, error: t.error, fileIds: t.fileIds }));
     },
   },
 ];
@@ -204,6 +225,48 @@ const HERMES_TOOLS: Tool[] = [
       if (!cur) return { error: "That task isn't running (it may have been cancelled)." };
       const t = await finishComputerTask(id, { ok: a.ok !== false, result: str(a.summary) || undefined, error: str(a.error) || undefined });
       return { taskId: t.id, status: t.status };
+    },
+  },
+  {
+    name: "request_permission",
+    scope: "computer",
+    description:
+      "Hermes: before a sensitive step in a computer task (signing in, submitting a form, downloading or uploading, installing, deleting or moving files, changing a setting, opening something the task didn't mention), ask Pamela. Describe the one step plainly. Then poll check_permission about every 20 seconds and don't do the step until it says approved.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "The computer task you're working on" },
+        action: { type: "string", description: "The one step, in plain words, e.g. “Sign in to the LegalShield associate portal”" },
+        category: { type: "string", enum: Object.keys(PERMISSION_CATEGORIES) },
+        detail: { type: "string", description: "Why it's needed and what you'll do right after" },
+        url: { type: "string", description: "The page or app it happens on" },
+      },
+      required: ["taskId", "action"],
+    },
+    async run(a, key) {
+      const id = str(a.taskId);
+      if (!/^[0-9a-f-]{36}$/i.test(id)) return { error: "taskId is required" };
+      const p = await requestPermission({
+        taskId: id,
+        action: str(a.action),
+        detail: str(a.detail) || null,
+        url: str(a.url) || null,
+        category: str(a.category) || undefined,
+        requestedBy: sourceOf(key),
+        agentKeyId: key.id,
+      });
+      return { ...permissionReply(p), expiresAt: p.expiresAt?.toISOString() };
+    },
+  },
+  {
+    name: "check_permission",
+    scope: "computer",
+    description: "Hermes: see whether Pamela approved, denied, or hasn't yet answered a request_permission. Follow the instruction it returns.",
+    inputSchema: { type: "object", properties: { permissionId: { type: "string" } }, required: ["permissionId"] },
+    async run(a) {
+      const id = str(a.permissionId);
+      const p = /^[0-9a-f-]{36}$/i.test(id) ? await getPermission(id) : null;
+      return p ? permissionReply(p) : { error: "No such permission request." };
     },
   },
 ];
@@ -245,6 +308,7 @@ export async function handleRpc(msg: RpcRequest, key: AgentKey): Promise<RpcResp
           "Use push_file and push_note to hand Pamela anything you made or found, and update_file to edit a Library file in place.",
           "You can build her pipelines (create_pipeline, add_pipeline_stage), deals (create_deal, update_deal, move_deal) and funnels (create_funnel); use list_pipelines and list_funnels first to avoid duplicates.",
           "Drafted emails and texts, and publishing a page, wait in her Approvals; nothing reaches another person until she says yes.",
+          "Computer use follows the access she set for you (see computer_access); Hermes asks her with request_permission before any sensitive step.",
         ].join(" "),
       });
     }

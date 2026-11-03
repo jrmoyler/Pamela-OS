@@ -74,6 +74,7 @@ function Setup({ m }: { m: Made }) {
           <p>Add Pamela OS to Hermes&apos;s config (<code>~/.hermes/config.yaml</code>) and restart Hermes:</p>
           <CopyBox label="config.yaml" value={hermesYaml} />
           <p>So Hermes picks up computer tasks on its own (pull mode), give it a scheduled job, e.g. every 2 minutes: “Call pamela_os next_computer_task. If there is a task, do it following its rules, push any files with push_file, then call finish_computer_task.”</p>
+          <p className="text-xs text-zinc-500">Before a sensitive step (signing in, submitting a form, installing, deleting) Hermes calls <code>request_permission</code> and waits on <code>check_permission</code>. You answer in Approvals → Computer use. Choose whether its own tasks need your yes in Command Center → Computer access.</p>
         </div>
       );
     default:
